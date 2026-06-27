@@ -1,43 +1,79 @@
 "use client";
-import { motion } from 'framer-motion';
-import { useMessStore } from '../store/useMessStore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useMessStore, calculateMeals } from '../store/useMessStore';
 
-export default function MealAdjuster({ id, name, meals, spent }: { id: string, name: string, meals: number, spent: number }) {
-  const updateMeals = useMessStore(state => state.updateMeals);
-  const updateSpent = useMessStore(state => state.updateSpent);
+export default function MealAdjuster({ id, name }: { id: string, name: string }) {
+  const selectedDate = useMessStore(state => state.selectedDate);
+  const dailyMeals = useMessStore(state => state.dailyMeals);
+  const toggleMeal = useMessStore(state => state.toggleMeal);
 
-  const increment = () => updateMeals(id, meals + 1);
-  const decrement = () => updateMeals(id, Math.max(0, meals - 1));
+  const userMeals = dailyMeals[selectedDate]?.[id] ?? { noon: true, night: true, hasGuest: false, guestNoon: false, guestNight: false };
+  const totalToday = calculateMeals(userMeals);
+  const isEating = totalToday > 0;
+
+  const ToggleButton = ({ label, active, field }: { label: string, active: boolean, field: any }) => (
+    <button
+      onClick={() => toggleMeal(id, field)}
+      className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all border ${
+        active 
+          ? 'bg-blue-500 text-white border-blue-600 shadow-sm' 
+          : 'bg-white/50 text-slate-500 border-white/60 hover:bg-white/80'
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <motion.div
       layout
-      className="p-5 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-sm flex flex-col gap-4"
-      initial={{ opacity: 0, scale: 0.9 }}
+      className={`p-5 rounded-squircle backdrop-blur-xl border shadow-sm flex flex-col gap-4 transition-colors duration-300 ${isEating ? 'bg-white/40 border-white/50' : 'bg-white/20 border-white/30 grayscale-[0.2]'}`}
+      initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ type: "spring", stiffness: 300, damping: 25 }}
     >
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-extrabold text-slate-800">{name}</h3>
-        <span className="text-xs font-bold px-2 py-1 bg-white/50 rounded-full text-slate-600">Roommate</span>
+        <span className="text-xs font-black text-slate-600 bg-white/60 px-2 py-1 rounded-lg">
+          {totalToday} {totalToday === 1 ? 'Meal' : 'Meals'}
+        </span>
       </div>
 
-      <div className="flex items-center justify-between bg-white/50 rounded-full p-1 border border-white/60">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={decrement} className="h-8 w-8 rounded-full bg-white shadow-sm font-bold text-slate-600 hover:bg-slate-50">-</motion.button>
-        <div className="flex flex-col items-center w-16">
-           <span className="text-xl font-black text-slate-800">{meals}</span>
+      <div className="space-y-3">
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Self</p>
+          <div className="flex gap-2">
+            <ToggleButton label="Noon" active={userMeals.noon} field="noon" />
+            <ToggleButton label="Night" active={userMeals.night} field="night" />
+          </div>
         </div>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={increment} className="h-8 w-8 rounded-full bg-white shadow-sm font-bold text-slate-600 hover:bg-slate-50">+</motion.button>
-      </div>
 
-      <div className="flex flex-col gap-1 mt-2">
-        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Shopped ($)</label>
-        <input
-          type="number"
-          value={spent}
-          onChange={(e) => updateSpent(id, Number(e.target.value))}
-          className="w-full bg-white/60 border border-white/40 rounded-xl p-2 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none transition-all shadow-inner"
-        />
+        <div className="flex flex-col">
+          <div className="flex justify-between items-center">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Guest</p>
+            <button
+              onClick={() => toggleMeal(id, 'hasGuest')}
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
+                userMeals.hasGuest ? 'bg-red-100 text-red-600' : 'bg-indigo-50 text-indigo-600'
+              }`}
+            >
+              {userMeals.hasGuest ? '− Remove' : '+ Add'}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {userMeals.hasGuest && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginTop: 8 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="flex gap-2 overflow-hidden"
+              >
+                <ToggleButton label="Noon" active={userMeals.guestNoon} field="guestNoon" />
+                <ToggleButton label="Night" active={userMeals.guestNight} field="guestNight" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </motion.div>
   );
