@@ -78,10 +78,40 @@ export const useMessStore = create<MessStore>((set, get) => ({
   },
   
   addMember: async (name: string) => {
-    // TODO: Add your logic to add a member
+    const { data, error } = await supabase
+      .from('roommates')
+      .insert([{ name, spent: 0 }])
+      .select();
+
+    if (error) {
+      console.error("Error adding member:", error);
+      alert("Failed to add member to database.");
+      return;
+    }
+
+    if (data && data.length > 0) {
+      // Instantly update local state so the UI reflects the new member
+      set((state) => ({
+        roommates: [...state.roommates, data[0]]
+      }));
+    }
   },
   
   deleteMember: async (id: string) => {
-    // TODO: Add your logic to delete a member
+    const { error } = await supabase
+      .from('roommates')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Error deleting member:", error);
+      alert("Failed to remove member.");
+      return;
+    }
+
+    // Instantly remove from local state
+    set((state) => ({
+      roommates: state.roommates.filter(r => r.id !== id)
+    }));
   }
 }));
