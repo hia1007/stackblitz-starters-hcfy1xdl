@@ -3,9 +3,9 @@ import { supabase } from '../../lib/supabase';
 
 const getToday = () => new Date().toISOString().split('T')[0];
 
-type Roommate = { id: string; name: string; spent: number; };
+export type Roommate = { id: string; name: string; spent: number; };
 export type MealOptions = { noon: boolean; night: boolean; hasGuest: boolean; guestNoon: boolean; guestNight: boolean; };
-type DailyMeals = Record<string, Record<string, MealOptions>>;
+export type DailyMeals = Record<string, Record<string, MealOptions>>;
 export type PaymentLog = { id: string; roommate_id: string; amount: number; description: string; created_at: string; };
 
 interface MessStore {
@@ -22,7 +22,7 @@ interface MessStore {
   deleteMember: (id: string) => Promise<void>;
 }
 
-const defaultMeals: MealOptions = { noon: true, night: true, hasGuest: false, guestNoon: false, guestNight: false };
+export const defaultMeals: MealOptions = { noon: true, night: true, hasGuest: false, guestNoon: false, guestNight: false };
 
 export const calculateMeals = (meals?: MealOptions) => {
   if (!meals) return 2; 
@@ -70,48 +70,85 @@ export const useMessStore = create<MessStore>((set, get) => ({
   },
 
   toggleMeal: async (userId: string, field: keyof MealOptions) => {
-    // TODO: Add your toggle logic here
-  },
-  
-  addPayment: async (id: string, amount: number, note: string) => {
-    // TODO: Add your payment logic here
-  },
-  
-  addMember: async (name: string) => {
-    const { data, error } = await supabase
-      .from('roommates')
-      .insert([{ name, spent: 0 }])
-      .select();
-
-    if (error) {
-      console.error("Error adding member:", error);
-      alert("Failed to add member to database.");
-      return;
+    const { selectedDate, dailyMeals } = get();
+    const currentDateMeals = dailyMeals[selectedDate] || {};
+    const userMeals = currentDateMeals[userId] || { ...defaultMeals };
+    
+    // Construct updated node
+    const updatedUserMeals = { ...userMeals, [field]: !userMeals[field] };
+    
+    // Handle conditional resets for structural consistency
+    if (field === 'hasGuest' && !updatedUserMeals.hasGuest) {
+      updatedUserMeals.guestNoon = false;
+      updatedUserMeals.guestNight = false;
     }
 
-    if (data && data.length > 0) {
-      // Instantly update local state so the UI reflects the new member
+    // Optimistic UI state update
+    set((state) => ({
+      dailyMeals: {
+        ...state.dailyMeals,
+        [selectedDate]: {
+          ...state.dailyMeals[selectedDate],
+          [userId]: updatedUserMeals
+        }
+      }
+    }));
+
+    // Network Sync (Upsert based on compound key structure)
+    const { error } = await supabase.from('daily_meals').upsert({
+      date: selectedDate,
+      roommate_id: userId,
+      noon: updatedUserMeals.noon,
+      night: updatedUserMeals.night,
+      has_guest: updatedUserMeals.hasGuest,
+      guest_noon: updatedUserMeals.guestNoon,
+      guest_night: updatedUserMeals.guestNight
+    }, { onConflict: 'date,roommate_id' });
+
+    if (error) {
+      console.error("Database update failed, rolling back state:", error);
+      set({ dailyMeals }); // Rollback to original state context
+    }
+  },
+  
+  addPayment: async (roommateId: string, amount: number, note: string) => {
+    // 1. Insert transaction entry into expenses
+    const { data: expenseData, error: expenseError } = await supabase
+      .from('expenses')
+      .insert([{ roommate_id: roommateId, amount, description: note }])
+      .select();
+
+    if (expenseError) throw expenseError;
+
+    // 2. Synchronize current total spent fields safely
+    const TargetRoommate = get().roommates.find(r => r.id === roommateId);
+    const updatedSpent = (TargetRoommate?.spent || 0) + amount;
+
+    const { error: roommateError } = await supabase
+      .from('roommates')
+      .update({ spent: updatedSpent })
+      .eq('id', roommateId);
+
+    if (roommateError) console.error("Roommate spent balance update failure:", roommateError);
+
+    // 3. Update state seamlessly
+    if (expenseData && expenseData.length > 0) {
       set((state) => ({
-        roommates: [...state.roommates, data[0]]
+        payments: [expenseData[0], ...state.payments],
+        roommates: state.roommates.map(r => r.id === roommateId ? { ...r, spent: updatedSpent } : r)
       }));
     }
   },
   
+  addMember: async (name: string) => {
+    const { data, error } = await supabase.from('roommates').insert([{ name, spent: 0 }]).select();
+    if (error) return console.error("Error adding member:", error);
+    if (data) set((state) => ({ roommates: [...state.roommates, data[0]] }));
+  },
+  
   deleteMember: async (id: string) => {
-    const { error } = await supabase
-      .from('roommates')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error("Error deleting member:", error);
-      alert("Failed to remove member.");
-      return;
-    }
-
-    // Instantly remove from local state
-    set((state) => ({
-      roommates: state.roommates.filter(r => r.id !== id)
-    }));
+    const { error } = await supabase.from('roommates').delete().eq('id', id);
+    if (error) return console.error("Error deleting member:", error);
+    set((state) => ({ roommates: state.roommates.filter(r => r.id !== id) }));
   }
 }));
