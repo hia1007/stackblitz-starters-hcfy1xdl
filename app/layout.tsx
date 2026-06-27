@@ -1,24 +1,14 @@
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] })
-
-export const metadata: Metadata = {
-  title: 'Mess Manager',
-  description: 'Shared Mess Expense Tracker',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-mesh-gradient bg-fixed min-h-screen text-slate-800 antialiased`}>
-        {children}
+      <body className="bg-gray-50 min-h-screen pb-24"> {/* Add padding-bottom so content isn't hidden behind the dock */}
+        <main className="p-4">
+          {children}
+        </main>
+        
       </body>
     </html>
-  )
+  );
 }

@@ -1,3 +1,11 @@
+/* Add these three lines at the very top */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Then your custom layer below */
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl;
+  }
+}

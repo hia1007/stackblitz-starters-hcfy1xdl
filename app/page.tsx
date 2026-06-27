@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import MealAdjuster from './components/MealAdjuster';
 import Ledger from './components/Ledger';
 import { useMessStore, calculateMeals } from './store/useMessStore';
+import BottomDock from './components/BottomDock';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'meals' | 'post-payment' | 'ledger'>('meals');
@@ -18,11 +19,11 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Cleaned up loading screen
   if (!isLoaded) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-4">
-         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-         <p className="font-bold text-slate-500 animate-pulse">Syncing Database...</p>
+      <main className="flex items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-xl font-bold text-slate-500 animate-pulse">Loading Mess Tracker...</p>
       </main>
     );
   }
@@ -53,22 +54,12 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6">
+    // Added pb-24 so the Bottom Dock doesn't cover up your content at the bottom
+    <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative">
+      
       <header className="text-center space-y-6 pt-4">
         <h1 className="text-4xl font-black tracking-tight text-slate-900">Bachelor Mess Tracker</h1>
-        
-        {/* Navigation Tabs */}
-        <div className="inline-flex bg-white/40 backdrop-blur-md p-1 rounded-2xl border border-white/60 shadow-inner overflow-x-auto max-w-full">
-          <button onClick={() => setActiveTab('meals')} className={`px-4 sm:px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all ${activeTab === 'meals' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
-            Daily Meals
-          </button>
-          <button onClick={() => setActiveTab('post-payment')} className={`px-4 sm:px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all ${activeTab === 'post-payment' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
-            Post Payment
-          </button>
-          <button onClick={() => setActiveTab('ledger')} className={`px-4 sm:px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all ${activeTab === 'ledger' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
-            Manager Ledger
-          </button>
-        </div>
+        {/* The old top tabs were deleted from here */}
       </header>
 
       {/* Global Metrics Row */}
@@ -163,6 +154,9 @@ export default function Dashboard() {
 
       {/* 3. MANAGER LEDGER TAB */}
       {activeTab === 'ledger' && <Ledger />}
+      
+      {/* Bottom Dock successfully added to the main render! */}
+      <BottomDock activeTab={activeTab} setActiveTab={setActiveTab} />
       
     </main>
   );
