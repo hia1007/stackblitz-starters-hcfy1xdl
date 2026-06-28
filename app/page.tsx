@@ -7,6 +7,7 @@ import BottomDock from './components/BottomDock';
 import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import DescoAnalytics from './components/DescoAnalytics';
 import LoginButton from './components/LoginButton';
+import MonthSelector from './components/MonthSelector'; 
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'entries'>('ledger');
@@ -22,7 +23,7 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
+  const { roommates, dailyMeals, payments, selectedDate, selectedMonth, setSelectedDate, setSelectedMonth, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
   
   const { user, role, signOut } = useAuthStore();
 
@@ -81,6 +82,72 @@ export default function Dashboard() {
     setNewMemberName('');
   };
 
+  // ==========================================
+  // ⚡ NEW MONTHLY ISOLATION MATH LOGIC ⚡
+  // ==========================================
+  
+  // 1. Filter everything strictly by the selectedMonth (e.g. "2026-06")
+  const monthlyDates = Object.keys(dailyMeals).filter(date => date.startsWith(selectedMonth));
+  const monthlyPayments = payments.filter(p => p.created_at.startsWith(selectedMonth));
+
+  // ==========================================
+  // ⚡ DYNAMIC TIMELINE FILTERING ⚡
+  // ==========================================
+  const activeRoommatesForMonth = roommates.filter(r => {
+    // 1. If they have never been archived, they are active
+    if (!r.archived_month) return true;
+    
+    // 2. If we are viewing a month BEFORE they were archived, they are active
+    if (selectedMonth < r.archived_month) return true;
+
+    // 3. ACCOUNTING FAILSAFE: If they have data in THIS month, keep them visible 
+    // to prevent math corruption (forces manager to clear their meals first)
+    const hasMealsThisMonth = monthlyDates.some(date => dailyMeals[date]?.[r.id]);
+    const hasPaymentsThisMonth = monthlyPayments.some(p => p.roommate_id === r.id);
+    
+    return hasMealsThisMonth || hasPaymentsThisMonth;
+  });
+
+  // 2. Calculate Total Monthly Meals
+  let totalMonthlyMeals = 0;
+  monthlyDates.forEach(date => {
+    activeRoommatesForMonth.forEach(r => { if (dailyMeals[date][r.id]) totalMonthlyMeals += calculateMeals(dailyMeals[date][r.id]); });
+  });
+
+  // 3. Calculate Total Monthly Expenses (Ignoring lifetime DB 'spent' totals)
+  const totalMonthlyCost = monthlyPayments.reduce((sum, p) => sum + p.amount, 0);
+  const monthlyMealRate = totalMonthlyMeals > 0 ? totalMonthlyCost / totalMonthlyMeals : 0;
+
+  // 4. Calculate Individual Insights based ONLY on this month
+  const activeRoommate = activeRoommatesForMonth.find(r => r.id === selectedAnalyticsUser);
+  let individualMonthlyMeals = 0;
+  let individualMonthlySpent = 0;
+  const individualMonthlyHistory: { date: string; data: any }[] = [];
+
+  if (activeRoommate) {
+    // Calculate spent for this specific month dynamically
+    individualMonthlySpent = monthlyPayments
+      .filter(p => p.roommate_id === activeRoommate.id)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    // Calculate meals for this specific month
+    monthlyDates.forEach(date => {
+      if (dailyMeals[date][activeRoommate.id]) {
+        const mealsCount = calculateMeals(dailyMeals[date][activeRoommate.id]);
+        if (mealsCount > 0) {
+          individualMonthlyMeals += mealsCount;
+          individualMonthlyHistory.push({ date, data: dailyMeals[date][activeRoommate.id] });
+        }
+      }
+    });
+    individualMonthlyHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  // ==========================================
+
+  const todayLocalString = new Date().toLocaleDateString();
+  const todaysPayments = payments.filter(p => new Date(p.created_at).toLocaleDateString() === todayLocalString);
+
   if (showDeletePage) {
     return (
       <main className="min-h-screen p-4 md:p-8 max-w-3xl mx-auto flex flex-col gap-6 animate-in slide-in-from-right-8 duration-300 pb-24">
@@ -92,11 +159,11 @@ export default function Dashboard() {
         </div>
         <div className="bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl rounded-3xl p-6 md:p-8">
           <p className="text-sm font-bold text-slate-500 mb-6 uppercase tracking-wider">Select a member to remove from the roster</p>
-          {roommates.length === 0 ? (
+          {activeRoommatesForMonth.length === 0 ? (
             <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-2xl"><p className="text-slate-500 font-bold">Roster is empty.</p></div>
           ) : (
             <div className="flex flex-col gap-2 divide-y divide-slate-100">
-              {roommates.map(r => (
+              {activeRoommatesForMonth.map(r => (
                 <div key={r.id} className="flex justify-between items-center py-4 first:pt-0">
                   <span className="font-black text-lg text-slate-800">{r.name}</span>
                   <button onClick={() => handleDeleteAttempt(r.id, r.name)} className="px-5 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-black rounded-xl flex items-center gap-2">
@@ -110,34 +177,6 @@ export default function Dashboard() {
       </main>
     );
   }
-
-  let totalMeals = 0;
-  Object.values(dailyMeals).forEach(day => {
-    roommates.forEach(r => { if (day[r.id]) totalMeals += calculateMeals(day[r.id]); });
-  });
-
-  const totalCost = roommates.reduce((sum, r) => sum + r.spent, 0);
-  const mealRate = totalMeals > 0 ? totalCost / totalMeals : 0;
-
-  const activeRoommate = roommates.find(r => r.id === selectedAnalyticsUser);
-  let individualMeals = 0;
-  const individualHistory: { date: string; data: any }[] = [];
-
-  if (activeRoommate) {
-    Object.entries(dailyMeals).forEach(([date, day]) => {
-      if (day[activeRoommate.id]) {
-        const mealsCount = calculateMeals(day[activeRoommate.id]);
-        if (mealsCount > 0) {
-          individualMeals += mealsCount;
-          individualHistory.push({ date, data: day[activeRoommate.id] });
-        }
-      }
-    });
-    individualHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }
-
-  const todayLocalString = new Date().toLocaleDateString();
-  const todaysPayments = payments.filter(p => new Date(p.created_at).toLocaleDateString() === todayLocalString);
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative overflow-x-hidden animate-in fade-in duration-300">
@@ -199,29 +238,39 @@ export default function Dashboard() {
       {activeTab === 'ledger' && (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <DescoAnalytics accountNo="41095956" />
+          
+          <MonthSelector selectedMonth={selectedMonth} onChange={setSelectedMonth} />
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{roommates.length}</p></div>
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Meals</p><p className="text-3xl font-black text-slate-800 mt-2">{totalMeals}</p></div>
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Per Meal Cost</p><p className="text-3xl font-black text-emerald-600 mt-2">৳ {mealRate.toFixed(2)}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{activeRoommatesForMonth.length}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Monthly Meals</p><p className="text-3xl font-black text-slate-800 mt-2">{totalMonthlyMeals}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Per Meal Cost</p><p className="text-3xl font-black text-emerald-600 mt-2">৳ {monthlyMealRate.toFixed(2)}</p></div>
           </div>
 
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Monthly Balance Sheets</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead><tr className="border-b-2 border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider"><th className="pb-4 min-w-[120px]">Member Entity</th><th className="pb-4">Meals</th><th className="pb-4">Spent</th><th className="pb-4">Cost</th><th className="pb-4 text-right">Balance</th></tr></thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-bold text-slate-700">
-                  {roommates.length === 0 ? (
+                  {activeRoommatesForMonth.length === 0 ? (
                     <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-medium">No members registered in roster.</td></tr>
                   ) : (
-                    roommates.map((member) => {
+                    activeRoommatesForMonth.map((member) => {
+                      // Calculate dynamically for the month
                       let memMeals = 0;
-                      Object.values(dailyMeals).forEach(day => { if(day[member.id]) memMeals += calculateMeals(day[member.id]); });
-                      const memCost = memMeals * mealRate;
-                      const finalBalance = member.spent - memCost;
+                      monthlyDates.forEach(date => { if(dailyMeals[date][member.id]) memMeals += calculateMeals(dailyMeals[date][member.id]); });
+                      
+                      const memSpent = monthlyPayments.filter(p => p.roommate_id === member.id).reduce((sum, p) => sum + p.amount, 0);
+                      const memCost = memMeals * monthlyMealRate;
+                      const finalBalance = memSpent - memCost;
+                      
                       return (
                         <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-4">{member.name}</td><td className="py-4 text-slate-500">{memMeals}</td><td className="py-4 text-emerald-600">৳ {member.spent.toFixed(2)}</td><td className="py-4 text-amber-600">৳ {memCost.toFixed(2)}</td>
+                          <td className="py-4">{member.name}</td>
+                          <td className="py-4 text-slate-500">{memMeals}</td>
+                          <td className="py-4 text-emerald-600">৳ {memSpent.toFixed(2)}</td>
+                          <td className="py-4 text-amber-600">৳ {memCost.toFixed(2)}</td>
                           <td className={`py-4 text-right font-black ${finalBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{finalBalance >= 0 ? '+' : '-'} ৳ {Math.abs(finalBalance).toFixed(2)}</td>
                         </tr>
                       );
@@ -234,10 +283,10 @@ export default function Dashboard() {
 
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <h2 className="text-2xl font-black text-slate-800">Individual Insights</h2>
+              <h2 className="text-2xl font-black text-slate-800">Monthly Individual Insights</h2>
               <select value={selectedAnalyticsUser} onChange={(e) => setSelectedAnalyticsUser(e.target.value)} className="bg-white/80 border border-slate-200 rounded-xl p-3 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select a member...</option>
-                {roommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {activeRoommatesForMonth.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
             {!activeRoommate ? (
@@ -245,17 +294,17 @@ export default function Dashboard() {
             ) : (
               <div className="animate-in fade-in zoom-in-95 duration-200">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Meals Had</p><p className="text-2xl font-black text-slate-800 mt-1">{individualMeals}</p></div>
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center"><p className="text-[10px] font-bold text-emerald-600 uppercase">Contributed</p><p className="text-2xl font-black text-emerald-600 mt-1">৳ {activeRoommate.spent.toFixed(2)}</p></div>
-                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center"><p className="text-[10px] font-bold text-amber-600 uppercase">Meal Cost</p><p className="text-2xl font-black text-amber-600 mt-1">৳ {(individualMeals * mealRate).toFixed(2)}</p></div>
-                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center"><p className="text-[10px] font-bold text-blue-600 uppercase">Net Balance</p><p className={`text-2xl font-black mt-1 ${activeRoommate.spent - (individualMeals * mealRate) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{activeRoommate.spent - (individualMeals * mealRate) >= 0 ? '+' : '-'} ৳ {Math.abs(activeRoommate.spent - (individualMeals * mealRate)).toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Meals Had</p><p className="text-2xl font-black text-slate-800 mt-1">{individualMonthlyMeals}</p></div>
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center"><p className="text-[10px] font-bold text-emerald-600 uppercase">Contributed</p><p className="text-2xl font-black text-emerald-600 mt-1">৳ {individualMonthlySpent.toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center"><p className="text-[10px] font-bold text-amber-600 uppercase">Meal Cost</p><p className="text-2xl font-black text-amber-600 mt-1">৳ {(individualMonthlyMeals * monthlyMealRate).toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center"><p className="text-[10px] font-bold text-blue-600 uppercase">Net Balance</p><p className={`text-2xl font-black mt-1 ${individualMonthlySpent - (individualMonthlyMeals * monthlyMealRate) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{individualMonthlySpent - (individualMonthlyMeals * monthlyMealRate) >= 0 ? '+' : '-'} ৳ {Math.abs(individualMonthlySpent - (individualMonthlyMeals * monthlyMealRate)).toFixed(2)}</p></div>
                 </div>
                 <h3 className="text-sm font-black text-slate-600 uppercase tracking-widest mb-4">Detailed Meal History</h3>
                 <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
-                  {individualHistory.length === 0 ? (
-                    <p className="text-sm text-slate-500 italic text-center py-4 bg-slate-50 rounded-xl">No meals recorded for this member yet.</p>
+                  {individualMonthlyHistory.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic text-center py-4 bg-slate-50 rounded-xl">No meals recorded for this member in this month.</p>
                   ) : (
-                    individualHistory.map((entry, idx) => (
+                    individualMonthlyHistory.map((entry, idx) => (
                       <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl bg-white border border-slate-100 shadow-sm gap-3">
                         <span className="font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg text-sm w-max">{new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                         <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
@@ -276,10 +325,10 @@ export default function Dashboard() {
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Historical Cost Registry</h2>
             <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto pr-2 divide-y divide-slate-100">
-              {payments.length === 0 ? (
-                <p className="text-sm text-slate-500 italic text-center py-4">No transactions logged in the registry yet.</p>
+              {monthlyPayments.length === 0 ? (
+                <p className="text-sm text-slate-500 italic text-center py-4">No transactions logged for this month yet.</p>
               ) : (
-                payments.map((log) => {
+                monthlyPayments.map((log) => {
                   const payer = roommates.find(r => r.id === log.roommate_id);
                   return (
                     <div key={log.id} className="flex justify-between items-center py-3 first:pt-0">
@@ -325,7 +374,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {roommates.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
+                  {activeRoommatesForMonth.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
                 </div>
               </div>
 
@@ -341,7 +390,7 @@ export default function Dashboard() {
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Source Entity (Member)</label>
                         <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                           <option value="">Select a member...</option>
-                          {roommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          {activeRoommatesForMonth.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                       </div>
 

@@ -2,8 +2,15 @@ import { create } from 'zustand';
 import { supabase } from '../../lib/supabase';
 
 const getToday = () => new Date().toISOString().split('T')[0];
+// Helper to get current month in YYYY-MM format
+const getCurrentMonth = () => new Date().toISOString().slice(0, 7); 
 
-type Roommate = { id: string; name: string; spent: number; };
+type Roommate = { 
+  id: string; 
+  name: string; 
+  spent: number; 
+  archived_month?: string | null; // Tracks when they left
+};
 export type MealOptions = { noon: boolean; night: boolean; hasGuest: boolean; guestNoon: boolean; guestNight: boolean; is_edited: boolean; };
 type DailyMeals = Record<string, Record<string, MealOptions>>;
 export type PaymentLog = { id: string; roommate_id: string; amount: number; description: string; created_at: string; };
@@ -13,14 +20,16 @@ interface MessStore {
   dailyMeals: DailyMeals;
   payments: PaymentLog[];
   selectedDate: string;
+  selectedMonth: string; 
   isLoaded: boolean;
   setSelectedDate: (date: string) => void;
+  setSelectedMonth: (month: string) => void; 
   fetchData: () => Promise<void>;
   toggleMeal: (userId: string, field: keyof Omit<MealOptions, 'is_edited'>, isPastDate?: boolean) => Promise<void>;
   addPayment: (id: string, amount: number, note: string) => Promise<void>;
   deletePayment: (paymentId: string) => Promise<void>;
   addMember: (name: string) => Promise<void>;
-  deleteMember: (id: string) => Promise<void>;
+  deleteMember: (id: string) => Promise<void>; // This is the interface blueprint!
 }
 
 export const defaultMeals: MealOptions = { noon: false, night: false, hasGuest: false, guestNoon: false, guestNight: false, is_edited: false };
@@ -38,9 +47,11 @@ export const useMessStore = create<MessStore>((set, get) => ({
   dailyMeals: {}, 
   payments: [],
   selectedDate: getToday(),
+  selectedMonth: getCurrentMonth(), 
   isLoaded: false, 
   
   setSelectedDate: (date) => set({ selectedDate: date }),
+  setSelectedMonth: (month) => set({ selectedMonth: month }), 
   
   fetchData: async () => {
     const { data: roommatesData } = await supabase.from('roommates').select('*').order('id');
@@ -82,7 +93,6 @@ export const useMessStore = create<MessStore>((set, get) => ({
       updatedUserMeals.guestNight = false;
     }
 
-    // Flag as edited if a past date is being modified
     if (isPastDate) {
       updatedUserMeals.is_edited = true;
     }
@@ -224,20 +234,27 @@ export const useMessStore = create<MessStore>((set, get) => ({
     }
   },
   
+  // This is the actual function logic!
   deleteMember: async (id: string) => {
+    const state = get();
+    const targetMonth = state.selectedMonth; // The month they are being removed from
+
+    // Soft-delete by setting the archived_month to the currently selected UI month
     const { error } = await supabase
       .from('roommates')
-      .delete()
+      .update({ archived_month: targetMonth })
       .eq('id', id);
 
     if (error) {
-      console.error("Error deleting member:", error);
+      console.error("Error archiving member:", error);
       alert("Failed to remove member.");
       return;
     }
 
     set((state) => ({
-      roommates: state.roommates.filter(r => r.id !== id)
+      roommates: state.roommates.map(r => 
+        r.id === id ? { ...r, archived_month: targetMonth } : r
+      )
     }));
   }
 }));
