@@ -3,9 +3,9 @@ import { supabase } from '../../lib/supabase';
 
 const getToday = () => new Date().toISOString().split('T')[0];
 
-export type Roommate = { id: string; name: string; spent: number; };
+type Roommate = { id: string; name: string; spent: number; };
 export type MealOptions = { noon: boolean; night: boolean; hasGuest: boolean; guestNoon: boolean; guestNight: boolean; };
-export type DailyMeals = Record<string, Record<string, MealOptions>>;
+type DailyMeals = Record<string, Record<string, MealOptions>>;
 export type PaymentLog = { id: string; roommate_id: string; amount: number; description: string; created_at: string; };
 
 interface MessStore {
@@ -22,10 +22,10 @@ interface MessStore {
   deleteMember: (id: string) => Promise<void>;
 }
 
-export const defaultMeals: MealOptions = { noon: true, night: true, hasGuest: false, guestNoon: false, guestNight: false };
+const defaultMeals: MealOptions = { noon: true, night: true, hasGuest: false, guestNoon: false, guestNight: false };
 
 export const calculateMeals = (meals?: MealOptions) => {
-  if (!meals) return 2; 
+  if (!meals) return 0;
   let total = (meals.noon ? 1 : 0) + (meals.night ? 1 : 0);
   if (meals.hasGuest) {
     total += (meals.guestNoon ? 1 : 0) + (meals.guestNight ? 1 : 0);
@@ -74,16 +74,13 @@ export const useMessStore = create<MessStore>((set, get) => ({
     const currentDateMeals = dailyMeals[selectedDate] || {};
     const userMeals = currentDateMeals[userId] || { ...defaultMeals };
     
-    // Construct updated node
     const updatedUserMeals = { ...userMeals, [field]: !userMeals[field] };
     
-    // Handle conditional resets for structural consistency
     if (field === 'hasGuest' && !updatedUserMeals.hasGuest) {
       updatedUserMeals.guestNoon = false;
       updatedUserMeals.guestNight = false;
     }
 
-    // Optimistic UI state update
     set((state) => ({
       dailyMeals: {
         ...state.dailyMeals,
@@ -94,7 +91,6 @@ export const useMessStore = create<MessStore>((set, get) => ({
       }
     }));
 
-    // Network Sync (Upsert based on compound key structure)
     const { error } = await supabase.from('daily_meals').upsert({
       date: selectedDate,
       roommate_id: userId,
@@ -106,49 +102,73 @@ export const useMessStore = create<MessStore>((set, get) => ({
     }, { onConflict: 'date,roommate_id' });
 
     if (error) {
-      console.error("Database update failed, rolling back state:", error);
-      set({ dailyMeals }); // Rollback to original state context
+      console.error("Meal sync failed:", error);
+      set({ dailyMeals });
     }
   },
   
-  addPayment: async (roommateId: string, amount: number, note: string) => {
-    // 1. Insert transaction entry into expenses
+  addPayment: async (id: string, amount: number, note: string) => {
     const { data: expenseData, error: expenseError } = await supabase
       .from('expenses')
-      .insert([{ roommate_id: roommateId, amount, description: note }])
+      .insert([{ roommate_id: id, amount, description: note }])
       .select();
 
     if (expenseError) throw expenseError;
 
-    // 2. Synchronize current total spent fields safely
-    const TargetRoommate = get().roommates.find(r => r.id === roommateId);
-    const updatedSpent = (TargetRoommate?.spent || 0) + amount;
+    const targetRoommate = get().roommates.find(r => r.id === id);
+    const updatedSpent = (targetRoommate?.spent || 0) + amount;
 
     const { error: roommateError } = await supabase
       .from('roommates')
       .update({ spent: updatedSpent })
-      .eq('id', roommateId);
+      .eq('id', id);
 
-    if (roommateError) console.error("Roommate spent balance update failure:", roommateError);
+    if (roommateError) console.error("Balance update failed:", roommateError);
 
-    // 3. Update state seamlessly
     if (expenseData && expenseData.length > 0) {
       set((state) => ({
         payments: [expenseData[0], ...state.payments],
-        roommates: state.roommates.map(r => r.id === roommateId ? { ...r, spent: updatedSpent } : r)
+        roommates: state.roommates.map(r => r.id === id ? { ...r, spent: updatedSpent } : r)
       }));
     }
   },
   
   addMember: async (name: string) => {
-    const { data, error } = await supabase.from('roommates').insert([{ name, spent: 0 }]).select();
-    if (error) return console.error("Error adding member:", error);
-    if (data) set((state) => ({ roommates: [...state.roommates, data[0]] }));
+    // FIX: Generate a unique text ID to satisfy the Supabase primary key requirement
+    const newId = crypto.randomUUID();
+
+    const { data, error } = await supabase
+      .from('roommates')
+      .insert([{ id: newId, name, spent: 0 }])
+      .select();
+
+    if (error) {
+      console.error("Error adding member:", error);
+      alert(`Failed to add member to database: ${error.message}`);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      set((state) => ({
+        roommates: [...state.roommates, data[0]]
+      }));
+    }
   },
   
   deleteMember: async (id: string) => {
-    const { error } = await supabase.from('roommates').delete().eq('id', id);
-    if (error) return console.error("Error deleting member:", error);
-    set((state) => ({ roommates: state.roommates.filter(r => r.id !== id) }));
+    const { error } = await supabase
+      .from('roommates')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Error deleting member:", error);
+      alert("Failed to remove member.");
+      return;
+    }
+
+    set((state) => ({
+      roommates: state.roommates.filter(r => r.id !== id)
+    }));
   }
 }));
