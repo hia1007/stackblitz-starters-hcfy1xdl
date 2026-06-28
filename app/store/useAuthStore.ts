@@ -1,35 +1,29 @@
 import { create } from 'zustand';
+// 🔄 FIX: Added an extra ../ to navigate out of app/store and into the root lib folder
 import { supabase } from '../../lib/supabase';
-import { User } from '@supabase/supabase-js';
 
-interface AuthStore {
-  user: User | null;
-  profile: any | null; // This will hold your role and nickname
-  isLoaded: boolean;
-  signInWithGoogle: () => Promise<void>;
+interface AuthState {
+  user: any;
+  signInWithMagicLink: (email: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  fetchProfile: (userId: string) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  profile: null,
-  isLoaded: false,
-
-  signInWithGoogle: async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin }
+  
+  signInWithMagicLink: async (email: string) => {
+    const { data, error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        // This ensures they are redirected back to your app after clicking the link in the email
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      }
     });
+    return { error };
   },
 
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ user: null, profile: null });
+    set({ user: null });
   },
-
-  fetchProfile: async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    set({ profile: data, isLoaded: true });
-  }
 }));

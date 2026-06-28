@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import MealAdjuster from './components/MealAdjuster';
 import { useMessStore, calculateMeals } from './store/useMessStore';
+import { useAuthStore } from './store/useAuthStore'; 
+import { supabase } from '../lib/supabase'; 
 import BottomDock from './components/BottomDock';
-import { MoreVertical, UserPlus, Trash2, X, ArrowLeft } from 'lucide-react';
+import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, Mail } from 'lucide-react';
 import DescoAnalytics from './components/DescoAnalytics';
 
 export default function Dashboard() {
@@ -25,7 +27,29 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Auth Wall State
+  const [authEmail, setAuthEmail] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  // Store Hooks
   const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
+  const { user, signInWithMagicLink, signOut } = useAuthStore();
+
+  // --- AUTHENTICATION LISTENER ---
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      useAuthStore.setState({ user: session?.user || null });
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      useAuthStore.setState({ user: session?.user || null });
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -57,9 +81,26 @@ export default function Dashboard() {
     if (code === '007') {
       await deleteMember(id);
       alert(`${name} was successfully deleted.`);
-    } else if (code !== null) { // null means they clicked Cancel
+    } else if (code !== null) { 
       alert('Authentication Failed: Incorrect mastercode.');
     }
+  };
+
+  // --- MAGIC LINK HANDLER ---
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    setAuthMessage('');
+    
+    const { error } = await signInWithMagicLink(authEmail);
+    
+    if (error) {
+      setAuthMessage(error.message);
+    } else {
+      setAuthMessage('✨ Magic link sent! Please check your email inbox.');
+      setAuthEmail('');
+    }
+    setIsAuthLoading(false);
   };
 
   // --- DELETE MEMBERS VIRTUAL PAGE ---
@@ -168,7 +209,7 @@ export default function Dashboard() {
       <header className="flex justify-between items-center pt-4 relative z-50 min-h-[60px]">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">Bachelor Mess Tracker</h1>
         
-        {activeTab === 'entries' && (
+        {activeTab === 'entries' && user && (
           <div className="relative">
             <button 
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -195,17 +236,21 @@ export default function Dashboard() {
                   </button>
                 </form>
 
-                {/* NEW: Take User to Mastercode Delete Page */}
                 <div className="border-t border-slate-200 pt-4 mt-1">
                   <button 
                     onClick={() => { setIsMenuOpen(false); setShowDeletePage(true); }}
-                    className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm"
+                    className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm mb-2"
                   >
                     <Trash2 className="w-5 h-5" /> Remove Members
                   </button>
+                  <button 
+                    onClick={() => { setIsMenuOpen(false); signOut(); }}
+                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm"
+                  >
+                    Log Out
+                  </button>
                 </div>
 
-                {/* Today's Transactions */}
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today&apos;s Transactions (Undo)</h3>
                   <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
@@ -232,21 +277,17 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-
               </div>
             )}
           </div>
         )}
       </header>
 
-      {/* 1. MASTER LEDGER TAB (Merged Analytics + Ledger) */}
       {activeTab === 'ledger' && (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* DESCO GRID ANALYTICS COMPONENT */}
           <DescoAnalytics accountNo="41095956" />
 
-          {/* Global Metrics Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Month Cost</p>
@@ -262,7 +303,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Financial Balance Sheets */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
             <div className="overflow-x-auto">
@@ -305,7 +345,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Individual Member Analytics */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <h2 className="text-2xl font-black text-slate-800">Individual Insights</h2>
@@ -377,7 +416,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Historical Cost Registry */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Historical Cost Registry</h2>
             <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto pr-2 divide-y divide-slate-100">
@@ -410,83 +448,122 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 2. ENTRIES TAB (Meals + Post Payment) */}
       {activeTab === 'entries' && (
         <div className="flex flex-col gap-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* Daily Meal Matrix */}
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h2 className="text-2xl font-black text-slate-800">Daily Meal Matrix</h2>
-              <div className="inline-flex flex-col p-3 bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Timeline Selector</label>
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-lg font-black text-slate-800 outline-none cursor-pointer" />
+          {/* UPDATED: Magic Link Authentication Wall */}
+          {!user ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl mt-4">
+              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                <Lock className="w-10 h-10 text-blue-600" />
               </div>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {roommates.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
-            </div>
-          </div>
-
-          <hr className="border-slate-200 border-dashed" />
-
-          {/* Post Payment Form */}
-          <div className="max-w-2xl mx-auto w-full">
-            <form onSubmit={handlePostPayment} className="p-6 md:p-10 rounded-squircle bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl flex flex-col gap-6 relative overflow-hidden">
-              {successMessage && (
-                <div className="absolute top-0 left-0 right-0 bg-emerald-500 text-white text-center py-2 text-sm font-bold shadow-md">
-                  {successMessage}
-                </div>
-              )}
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-2">Post Capital Expense</h2>
+              <h2 className="text-3xl font-black text-slate-800 mb-3">Access Restricted</h2>
+              <p className="text-slate-500 font-bold mb-8 max-w-sm">
+                You must sign in to securely view, modify, or post new entries to the master ledger.
+              </p>
               
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Source Entity (Member)</label>
-                <select 
-                  value={selectedUser} 
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                  className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-sm cursor-pointer"
+              <form onSubmit={handleMagicLink} className="flex flex-col gap-3 w-full max-w-xs">
+                <div className="relative">
+                  <Mail className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    className="bg-white/80 border border-slate-200 rounded-xl p-4 pl-12 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-inner w-full"
+                    required
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  disabled={isAuthLoading}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-xl font-black tracking-wide shadow-xl transition-all active:scale-[0.98] w-full disabled:opacity-50"
                 >
-                  <option value="">Select a member...</option>
-                  {roommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
+                  {isAuthLoading ? 'Sending Link...' : 'Send Magic Link'}
+                </button>
+              </form>
+              
+              {authMessage && (
+                <p className={`mt-6 text-sm font-bold p-3 rounded-lg border ${authMessage.includes('sent') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                  {authMessage}
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h2 className="text-2xl font-black text-slate-800">Daily Meal Matrix</h2>
+                  <div className="inline-flex flex-col p-3 bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Timeline Selector</label>
+                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-lg font-black text-slate-800 outline-none cursor-pointer" />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {roommates.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Paid (BDT ৳)</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  placeholder="e.g., 500.00" 
-                  value={amount} 
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-inner"
-                  required
-                />
-              </div>
+              <hr className="border-slate-200 border-dashed" />
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Transaction Specifications</label>
-                <textarea 
-                  placeholder="e.g., Rice, Chicken, Utility Bills..." 
-                  rows={3} 
-                  value={note} 
-                  onChange={(e) => setNote(e.target.value)}
-                  className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-inner resize-none"
-                  required
-                />
-              </div>
+              <div className="max-w-2xl mx-auto w-full">
+                <form onSubmit={handlePostPayment} className="p-6 md:p-10 rounded-squircle bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl flex flex-col gap-6 relative overflow-hidden">
+                  {successMessage && (
+                    <div className="absolute top-0 left-0 right-0 bg-emerald-500 text-white text-center py-2 text-sm font-bold shadow-md">
+                      {successMessage}
+                    </div>
+                  )}
+                  <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-2">Post Capital Expense</h2>
+                  
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Source Entity (Member)</label>
+                    <select 
+                      value={selectedUser} 
+                      onChange={(e) => setSelectedUser(e.target.value)}
+                      className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-sm cursor-pointer"
+                    >
+                      <option value="">Select a member...</option>
+                      {roommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
 
-              <button 
-                type="submit" 
-                disabled={isSubmitting}
-                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50 text-lg"
-              >
-                {isSubmitting ? 'Synchronizing...' : 'Commit Transaction'}
-              </button>
-            </form>
-          </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Paid (BDT ৳)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="e.g., 500.00" 
+                      value={amount} 
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-inner"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Transaction Specifications</label>
+                    <textarea 
+                      placeholder="e.g., Rice, Chicken, Utility Bills..." 
+                      rows={3} 
+                      value={note} 
+                      onChange={(e) => setNote(e.target.value)}
+                      className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-inner resize-none"
+                      required
+                    />
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50 text-lg"
+                  >
+                    {isSubmitting ? 'Synchronizing...' : 'Commit Transaction'}
+                  </button>
+                </form>
+              </div>
+            </>
+          )}
         </div>
       )}
 
