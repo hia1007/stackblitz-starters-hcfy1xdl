@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Auth0Provider from "next-auth/providers/auth0";
+import { supabase } from '../../../../lib/supabase';
 
 const handler = NextAuth({
   providers: [
@@ -18,6 +19,19 @@ const handler = NextAuth({
       // Attach the user id from the token to session.user.id for compatibility
       (session.user as any).id = token.sub;
       return session;
+    },
+  },
+  events: {
+    // Upsert a profile row in Supabase on every successful sign-in
+    async signIn({ user }) {
+      try {
+        await supabase.from('profiles').upsert(
+          { id: user.id, email: user.email, role: 'member' },
+          { returning: 'minimal' }
+        );
+      } catch (err) {
+        console.error('Failed to upsert profile in Supabase on signIn event:', err);
+      }
     },
   },
 });
