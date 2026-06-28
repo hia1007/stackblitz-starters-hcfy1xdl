@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import MealAdjuster from './components/MealAdjuster';
 import { useMessStore, calculateMeals } from './store/useMessStore';
 import { useAuthStore } from './store/useAuthStore'; 
-import { supabase } from '../lib/supabase'; 
 import BottomDock from './components/BottomDock';
 import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import DescoAnalytics from './components/DescoAnalytics';
@@ -15,7 +14,6 @@ export default function Dashboard() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showDeletePage, setShowDeletePage] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
-  const [managerEmail, setManagerEmail] = useState('');
 
   const [selectedAnalyticsUser, setSelectedAnalyticsUser] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
@@ -26,24 +24,7 @@ export default function Dashboard() {
 
   const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
   
-  const { user, role, signOut, fetchProfile, promoteToManager } = useAuthStore();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      useAuthStore.setState({ user: session?.user || null });
-      if (session?.user) fetchProfile(session.user.id);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      useAuthStore.setState({ user: session?.user || null });
-      if (session?.user) fetchProfile(session.user.id);
-      else useAuthStore.setState({ role: null });
-    });
-
-    return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+  const { user, role, signOut } = useAuthStore();
 
   useEffect(() => {
     fetchData();
@@ -71,17 +52,6 @@ export default function Dashboard() {
       alert(`${name} was successfully deleted.`);
     } else if (code !== null) { 
       alert('Authentication Failed: Incorrect mastercode.');
-    }
-  };
-
-  const handleAssignManager = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!managerEmail.trim()) return;
-    const { error } = await promoteToManager(managerEmail.trim());
-    if (error) alert("Failed to assign manager. Ensure they have logged in at least once.");
-    else {
-      alert(`${managerEmail} is now a Manager!`);
-      setManagerEmail('');
     }
   };
 
@@ -185,21 +155,20 @@ export default function Dashboard() {
               <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-3xl border border-white shadow-2xl rounded-3xl p-5 flex flex-col gap-4 origin-top-right animate-in fade-in zoom-in-95 duration-200">
                 
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Manager Portal</h3>
-                
-                <form onSubmit={handleAssignManager} className="flex gap-2">
-                  <input type="email" placeholder="Assign new manager email..." value={managerEmail} onChange={(e) => setManagerEmail(e.target.value)} className="flex-1 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  <button type="submit" className="bg-emerald-600 text-white p-3 rounded-xl hover:bg-emerald-700 transition-colors active:scale-95 shadow-md"><ShieldCheck className="w-5 h-5" /></button>
-                </form>
 
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider border-t border-slate-200 pt-3">Add to Roster</h3>
                 <form onSubmit={handleAddMember} className="flex gap-2">
-                  <input type="text" placeholder="New member name..." value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} className="flex-1 bg-slate-100/50 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="text" placeholder="New member name..." value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} className="flex-1 bg-slate-100/50 border border-slate-200 rounded-xl p-3 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <button type="submit" className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors active:scale-95 shadow-md"><UserPlus className="w-5 h-5" /></button>
                 </form>
 
                 <div className="border-t border-slate-200 pt-4 mt-1">
-                  <button onClick={() => { setIsMenuOpen(false); setShowDeletePage(true); }} className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-black tracking-wide rounded-xl flex items-center justify-center gap-2"><Trash2 className="w-4 h-4" /> Remove Member</button>
-                  <button onClick={() => { setIsMenuOpen(false); signOut(); }} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 mt-2"><X className="w-4 h-4" /> Sign Out</button>
+                  <button onClick={() => { setIsMenuOpen(false); setShowDeletePage(true); }} className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors">
+                    <Trash2 className="w-5 h-5" /> Delete Member
+                  </button>
+                  <button onClick={() => { setIsMenuOpen(false); signOut(); }} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors mt-2">
+                    <X className="w-5 h-5" /> Logout
+                  </button>
                 </div>
 
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
@@ -212,7 +181,7 @@ export default function Dashboard() {
                         const member = roommates.find(r => r.id === p.roommate_id);
                         return (
                           <div key={p.id} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100 shadow-sm">
-                            <div className="flex flex-col"><span className="text-xs font-bold text-slate-700 truncate max-w-[150px]">{p.description}</span><span className="text-[9px] font-black text-slate-500">{member?.name}</span></div>
+                            <div className="flex flex-col"><span className="text-xs font-bold text-slate-700 truncate max-w-[150px]">{p.description}</span><span className="text-[9px] font-black text-slate-400">by {member?.name}</span></div>
                             <button onClick={() => { if(confirm(`Delete this ৳ ${p.amount} payment?`)) deletePayment(p.id); }} className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         )
@@ -231,16 +200,16 @@ export default function Dashboard() {
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <DescoAnalytics accountNo="41095956" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Meals</p><p className="text-3xl font-black text-slate-900 mt-2">{totalMeals}</p></div>
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Cost</p><p className="text-3xl font-black text-emerald-600 mt-2">৳ {totalCost.toFixed(2)}</p></div>
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Meal Rate</p><p className="text-3xl font-black text-blue-600 mt-2">৳ {mealRate.toFixed(2)}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{roommates.length}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Meals</p><p className="text-3xl font-black text-slate-800 mt-2">{totalMeals}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Per Meal Cost</p><p className="text-3xl font-black text-emerald-600 mt-2">৳ {mealRate.toFixed(2)}</p></div>
           </div>
 
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
-                <thead><tr className="border-b-2 border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider"><th className="pb-4 min-w-[120px]">Member Entity</th><th className="pb-4">Meals</th><th className="pb-4">Contributed</th><th className="pb-4">Owed</th><th className="pb-4 text-right">Balance</th></tr></thead>
+                <thead><tr className="border-b-2 border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider"><th className="pb-4 min-w-[120px]">Member Entity</th><th className="pb-4">Meals</th><th className="pb-4">Spent</th><th className="pb-4">Cost</th><th className="pb-4 text-right">Balance</th></tr></thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-bold text-slate-700">
                   {roommates.length === 0 ? (
                     <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-medium">No members registered in roster.</td></tr>
@@ -252,7 +221,7 @@ export default function Dashboard() {
                       const finalBalance = member.spent - memCost;
                       return (
                         <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-4">{member.name}</td><td className="py-4 text-slate-500">{memMeals}</td><td className="py-4 text-emerald-600">৳ {member.spent.toFixed(2)}</td><td className="py-4 text-slate-600">৳ {memCost.toFixed(2)}</td>
+                          <td className="py-4">{member.name}</td><td className="py-4 text-slate-500">{memMeals}</td><td className="py-4 text-emerald-600">৳ {member.spent.toFixed(2)}</td><td className="py-4 text-amber-600">৳ {memCost.toFixed(2)}</td>
                           <td className={`py-4 text-right font-black ${finalBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{finalBalance >= 0 ? '+' : '-'} ৳ {Math.abs(finalBalance).toFixed(2)}</td>
                         </tr>
                       );
@@ -272,14 +241,14 @@ export default function Dashboard() {
               </select>
             </div>
             {!activeRoommate ? (
-              <div className="py-10 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl"><p className="text-slate-500 font-bold">Select a member from the dropdown</p></div>
+              <div className="py-10 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl"><p className="text-slate-500 font-bold">Select a member from the dropdown above.</p></div>
             ) : (
               <div className="animate-in fade-in zoom-in-95 duration-200">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Meals Had</p><p className="text-2xl font-black text-slate-800 mt-2">{individualMeals}</p></div>
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center"><p className="text-[10px] font-bold text-emerald-600 uppercase">Contributed</p><p className="text-2xl font-black text-emerald-600 mt-2">৳ {activeRoommate.spent.toFixed(2)}</p></div>
-                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center"><p className="text-[10px] font-bold text-amber-600 uppercase">Meal Cost</p><p className="text-2xl font-black text-amber-600 mt-2">৳ {(individualMeals * mealRate).toFixed(2)}</p></div>
-                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center"><p className="text-[10px] font-bold text-blue-600 uppercase">Net Balance</p><p className={`text-2xl font-black mt-2 ${activeRoommate.spent - (individualMeals * mealRate) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{activeRoommate.spent - (individualMeals * mealRate) >= 0 ? '+' : '-'} ৳ {Math.abs(activeRoommate.spent - (individualMeals * mealRate)).toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Meals Had</p><p className="text-2xl font-black text-slate-800 mt-1">{individualMeals}</p></div>
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center"><p className="text-[10px] font-bold text-emerald-600 uppercase">Contributed</p><p className="text-2xl font-black text-emerald-600 mt-1">৳ {activeRoommate.spent.toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center"><p className="text-[10px] font-bold text-amber-600 uppercase">Meal Cost</p><p className="text-2xl font-black text-amber-600 mt-1">৳ {(individualMeals * mealRate).toFixed(2)}</p></div>
+                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center"><p className="text-[10px] font-bold text-blue-600 uppercase">Net Balance</p><p className={`text-2xl font-black mt-1 ${activeRoommate.spent - (individualMeals * mealRate) >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{activeRoommate.spent - (individualMeals * mealRate) >= 0 ? '+' : '-'} ৳ {Math.abs(activeRoommate.spent - (individualMeals * mealRate)).toFixed(2)}</p></div>
                 </div>
                 <h3 className="text-sm font-black text-slate-600 uppercase tracking-widest mb-4">Detailed Meal History</h3>
                 <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
@@ -292,8 +261,8 @@ export default function Dashboard() {
                         <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
                           {entry.data.noon && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-orange-100 text-orange-700 border border-orange-200">Lunch</span>}
                           {entry.data.night && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-indigo-100 text-indigo-700 border border-indigo-200">Dinner</span>}
-                          {entry.data.hasGuest && entry.data.guestNoon && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-pink-100 text-pink-700 border border-pink-200">+Guest L</span>}
-                          {entry.data.hasGuest && entry.data.guestNight && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-pink-100 text-pink-700 border border-pink-200">+Guest D</span>}
+                          {entry.data.hasGuest && entry.data.guestNoon && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-pink-100 text-pink-700 border border-pink-200">Guest Lunch</span>}
+                          {entry.data.hasGuest && entry.data.guestNight && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-pink-100 text-pink-700 border border-pink-200">Guest Dinner</span>}
                           {entry.data.is_edited && <span className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md bg-amber-100 text-amber-700 border border-amber-200 sm:ml-auto">Edited</span>}
                         </div>
                       </div>
@@ -314,7 +283,7 @@ export default function Dashboard() {
                   const payer = roommates.find(r => r.id === log.roommate_id);
                   return (
                     <div key={log.id} className="flex justify-between items-center py-3 first:pt-0">
-                      <div><p className="text-base font-bold text-slate-800">{log.description}</p><p className="text-[10px] text-slate-500 font-black uppercase tracking-wider mt-1">Posted by <span className="text-slate-700">{payer?.name || 'Unknown'}</span></p></div>
+                      <div><p className="text-base font-bold text-slate-800">{log.description}</p><p className="text-[10px] text-slate-500 font-black uppercase tracking-wider mt-1">Posted by <span className="text-slate-700">{payer?.name}</span></p></div>
                       <div className="text-right"><p className="text-lg font-black text-emerald-600">+ ৳ {Number(log.amount).toFixed(2)}</p><p className="text-[10px] text-slate-400 font-bold uppercase">{new Date(log.created_at).toLocaleDateString()}</p></div>
                     </div>
                   );
@@ -333,7 +302,7 @@ export default function Dashboard() {
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl mt-4">
               <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6"><Lock className="w-10 h-10 text-blue-600" /></div>
               <h2 className="text-3xl font-black text-slate-800 mb-3">Access Restricted</h2>
-              <p className="text-slate-500 font-bold mb-8 max-w-sm">You must sign in to view the master entries.</p>
+              <p className="text-slate-500 font-bold mb-8 max-w-sm">Enter the secret manager code to access master entries and manage the system.</p>
               
               <LoginButton />
             </div>
@@ -351,7 +320,7 @@ export default function Dashboard() {
                   <h2 className="text-2xl font-black text-slate-800">Daily Meal Matrix</h2>
                   <div className="inline-flex flex-col p-3 bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 shadow-sm">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Timeline Selector</label>
-                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} disabled={role !== 'manager'} className="bg-transparent text-lg font-black text-slate-900 focus:outline-none" />
+                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} disabled={role !== 'manager'} className="bg-transparent text-lg font-black text-slate-800 focus:outline-none" />
                   </div>
                 </div>
                 
@@ -386,7 +355,7 @@ export default function Dashboard() {
                         <textarea placeholder="e.g., Rice, Chicken, Utility Bills..." rows={3} value={note} onChange={(e) => setNote(e.target.value)} className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                       </div>
 
-                      <button type="submit" disabled={isSubmitting} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50">
+                      <button type="submit" disabled={isSubmitting} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-4 rounded-xl shadow-md transition-all active:scale-95 disabled:bg-blue-400">
                         {isSubmitting ? 'Synchronizing...' : 'Commit Transaction'}
                       </button>
                     </form>
