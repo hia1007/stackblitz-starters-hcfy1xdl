@@ -172,7 +172,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
-                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today's Transactions (Undo)</h3>
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today&apos;s Transactions (Undo)</h3>
                   <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
                     {todaysPayments.length === 0 ? (
                       <p className="text-xs text-slate-400 italic">No transactions posted today.</p>
