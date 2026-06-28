@@ -1,17 +1,18 @@
 "use client";
+
 import { useState, useEffect } from 'react';
 import MealAdjuster from './components/MealAdjuster';
 import { useMessStore, calculateMeals } from './store/useMessStore';
 import BottomDock from './components/BottomDock';
-import { MoreVertical, UserPlus, Trash2, X } from 'lucide-react';
-// NEW: Imported the DESCO component
-import DescoAnalytics from './components/DescoAnalytics'; 
+import { MoreVertical, UserPlus, Trash2, X, ArrowLeft } from 'lucide-react';
+import DescoAnalytics from './components/DescoAnalytics';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'entries'>('ledger');
   
-  // Header Menu State
+  // Header Menu & Page State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showDeletePage, setShowDeletePage] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
 
   // Analytics State 
@@ -26,8 +27,8 @@ export default function Dashboard() {
 
   const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
 
-  useEffect(() => { 
-    fetchData(); 
+  useEffect(() => {
+    fetchData();
   }, [fetchData]);
 
   useEffect(() => {
@@ -49,20 +50,74 @@ export default function Dashboard() {
     );
   }
 
+  // --- MASTERCODE DELETE FUNCTION ---
+  const handleDeleteAttempt = async (id: string, name: string) => {
+    const code = window.prompt(`WARNING: You are about to permanently delete ${name}.\n\nEnter the Mastercode to confirm:`);
+    
+    if (code === '007') {
+      await deleteMember(id);
+      alert(`${name} was successfully deleted.`);
+    } else if (code !== null) { // null means they clicked Cancel
+      alert('Authentication Failed: Incorrect mastercode.');
+    }
+  };
+
+  // --- DELETE MEMBERS VIRTUAL PAGE ---
+  if (showDeletePage) {
+    return (
+      <main className="min-h-screen p-4 md:p-8 max-w-3xl mx-auto flex flex-col gap-6 animate-in slide-in-from-right-8 duration-300 pb-24">
+        <div className="flex items-center gap-4 mb-2 pt-4">
+          <button 
+            onClick={() => setShowDeletePage(false)}
+            className="p-3 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-700" />
+          </button>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">Manage Members</h1>
+        </div>
+
+        <div className="bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl rounded-3xl p-6 md:p-8">
+          <p className="text-sm font-bold text-slate-500 mb-6 uppercase tracking-wider">Select a member to remove from the roster</p>
+          
+          {roommates.length === 0 ? (
+            <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-2xl">
+              <p className="text-slate-500 font-bold">Roster is empty.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 divide-y divide-slate-100">
+              {roommates.map(r => (
+                <div key={r.id} className="flex justify-between items-center py-4 first:pt-0">
+                  <span className="font-black text-lg text-slate-800">{r.name}</span>
+                  <button
+                    onClick={() => handleDeleteAttempt(r.id, r.name)}
+                    className="px-5 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-black rounded-xl flex items-center gap-2 transition-colors active:scale-95 shadow-sm border border-red-100"
+                  >
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  // --- CALCULATION LOGIC ---
   let totalMeals = 0;
   Object.values(dailyMeals).forEach(day => {
     roommates.forEach(r => { 
       if (day[r.id]) totalMeals += calculateMeals(day[r.id]); 
     });
   });
-  
+
   const totalCost = roommates.reduce((sum, r) => sum + r.spent, 0);
   const mealRate = totalMeals > 0 ? totalCost / totalMeals : 0;
 
   const activeRoommate = roommates.find(r => r.id === selectedAnalyticsUser);
   let individualMeals = 0;
   const individualHistory: { date: string; data: any }[] = [];
-  
+
   if (activeRoommate) {
     Object.entries(dailyMeals).forEach(([date, day]) => {
       if (day[activeRoommate.id]) {
@@ -79,6 +134,7 @@ export default function Dashboard() {
   const todayLocalString = new Date().toLocaleDateString();
   const todaysPayments = payments.filter(p => new Date(p.created_at).toLocaleDateString() === todayLocalString);
 
+  // --- HANDLERS ---
   const handlePostPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return alert("Please select a Source Entity (Member) before committing the transaction.");
@@ -107,7 +163,7 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative overflow-x-hidden">
+    <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative overflow-x-hidden animate-in fade-in duration-300">
       
       <header className="flex justify-between items-center pt-4 relative z-50 min-h-[60px]">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">Bachelor Mess Tracker</h1>
@@ -124,7 +180,7 @@ export default function Dashboard() {
             {isMenuOpen && (
               <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-3xl border border-white shadow-2xl rounded-3xl p-5 flex flex-col gap-4 origin-top-right animate-in fade-in zoom-in-95 duration-200 z-50">
                 
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Manage Roster</h3>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Add to Roster</h3>
                 
                 <form onSubmit={handleAddMember} className="flex gap-2">
                   <input 
@@ -134,25 +190,22 @@ export default function Dashboard() {
                     onChange={(e) => setNewMemberName(e.target.value)}
                     className="flex-1 bg-slate-100/50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button type="submit" className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors active:scale-95">
+                  <button type="submit" className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors active:scale-95 shadow-md">
                     <UserPlus className="w-5 h-5" />
                   </button>
                 </form>
 
-                <div className="border-t border-slate-200 pt-3 flex flex-col gap-2 max-h-40 overflow-y-auto">
-                  {roommates.map(r => (
-                    <div key={r.id} className="flex justify-between items-center p-2 rounded-xl hover:bg-slate-100/80 transition-colors">
-                      <span className="font-bold text-slate-700">{r.name}</span>
-                      <button 
-                        onClick={() => { if(confirm(`Remove ${r.name}?`)) deleteMember(r.id); }}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                {/* NEW: Take User to Mastercode Delete Page */}
+                <div className="border-t border-slate-200 pt-4 mt-1">
+                  <button 
+                    onClick={() => { setIsMenuOpen(false); setShowDeletePage(true); }}
+                    className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 font-black tracking-wide rounded-xl flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm"
+                  >
+                    <Trash2 className="w-5 h-5" /> Remove Members
+                  </button>
                 </div>
 
+                {/* Today's Transactions */}
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today&apos;s Transactions (Undo)</h3>
                   <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
@@ -165,10 +218,10 @@ export default function Dashboard() {
                           <div key={p.id} className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-100 shadow-sm">
                             <div className="flex flex-col">
                               <span className="text-xs font-bold text-slate-700 truncate max-w-[150px]">{p.description}</span>
-                              <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{member?.name} • ৳{Number(p.amount).toFixed(2)}</span>
+                              <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{member?.name} • ৳ {Number(p.amount).toFixed(2)}</span>
                             </div>
-                            <button 
-                              onClick={() => { if(confirm(`Delete this ৳${p.amount} payment? The money will be deducted from their balance.`)) deletePayment(p.id); }}
+                            <button
+                              onClick={() => { if(confirm(`Delete this ৳ ${p.amount} payment? The money will be deducted from their balance.`)) deletePayment(p.id); }}
                               className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -179,6 +232,7 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+
               </div>
             )}
           </div>
@@ -189,14 +243,14 @@ export default function Dashboard() {
       {activeTab === 'ledger' && (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* NEW: DESCO GRID ANALYTICS COMPONENT */}
+          {/* DESCO GRID ANALYTICS COMPONENT */}
           <DescoAnalytics accountNo="41095956" />
 
           {/* Global Metrics Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Month Cost</p>
-              <p className="text-4xl font-black text-slate-800">৳{totalCost.toFixed(2)}</p>
+              <p className="text-4xl font-black text-slate-800">৳ {totalCost.toFixed(2)}</p>
             </div>
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Meals Logged</p>
@@ -204,7 +258,7 @@ export default function Dashboard() {
             </div>
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Current Meal Rate</p>
-              <p className="text-4xl font-black text-blue-600">৳{mealRate.toFixed(2)}</p>
+              <p className="text-4xl font-black text-blue-600">৳ {mealRate.toFixed(2)}</p>
             </div>
           </div>
 
@@ -233,15 +287,14 @@ export default function Dashboard() {
                       });
                       const memCost = memMeals * mealRate;
                       const finalBalance = member.spent - memCost;
-
                       return (
                         <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="py-4">{member.name}</td>
                           <td className="py-4 text-slate-500">{memMeals}</td>
-                          <td className="py-4 text-emerald-600">৳{member.spent.toFixed(2)}</td>
-                          <td className="py-4 text-amber-600">৳{memCost.toFixed(2)}</td>
+                          <td className="py-4 text-emerald-600">৳ {member.spent.toFixed(2)}</td>
+                          <td className="py-4 text-amber-600">৳ {memCost.toFixed(2)}</td>
                           <td className={`py-4 text-right font-black ${finalBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {finalBalance >= 0 ? '+' : '-'}৳{Math.abs(finalBalance).toFixed(2)}
+                            {finalBalance >= 0 ? '+' : '-'} ৳ {Math.abs(finalBalance).toFixed(2)}
                           </td>
                         </tr>
                       );
@@ -279,17 +332,17 @@ export default function Dashboard() {
                   </div>
                   <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
                     <p className="text-[10px] font-bold text-emerald-600 uppercase">Contributed</p>
-                    <p className="text-2xl font-black text-emerald-700">৳{activeRoommate.spent.toFixed(2)}</p>
+                    <p className="text-2xl font-black text-emerald-700">৳ {activeRoommate.spent.toFixed(2)}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center">
                     <p className="text-[10px] font-bold text-amber-600 uppercase">Meal Cost</p>
-                    <p className="text-2xl font-black text-amber-700">৳{(individualMeals * mealRate).toFixed(2)}</p>
+                    <p className="text-2xl font-black text-amber-700">৳ {(individualMeals * mealRate).toFixed(2)}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-center">
                     <p className="text-[10px] font-bold text-blue-600 uppercase">Net Balance</p>
                     <p className="text-2xl font-black text-blue-700">
-                      {activeRoommate.spent - (individualMeals * mealRate) >= 0 ? '+' : '-'}
-                      ৳{Math.abs(activeRoommate.spent - (individualMeals * mealRate)).toFixed(2)}
+                      {activeRoommate.spent - (individualMeals * mealRate) >= 0 ? '+' : '-'} 
+                      ৳ {Math.abs(activeRoommate.spent - (individualMeals * mealRate)).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -342,7 +395,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-black text-emerald-600">+ ৳{Number(log.amount).toFixed(2)}</p>
+                        <p className="text-lg font-black text-emerald-600">+ ৳ {Number(log.amount).toFixed(2)}</p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
                           {new Date(log.created_at).toLocaleDateString()}
                         </p>
@@ -353,6 +406,7 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+
         </div>
       )}
 
