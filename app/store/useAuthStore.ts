@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 import { supabase } from '../../lib/supabase';
+import { signOut as nextAuthSignOut } from 'next-auth/react';
 
 interface AuthState {
   user: any;
   role: 'manager' | 'member' | null;
-  signInWithMagicLink: (email: string) => Promise<{ error: any }>;
-  signInWithGoogle: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
   promoteToManager: (email: string) => Promise<{ error: any }>;
+  setUser?: (user: any) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -21,28 +21,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       .select('role')
       .eq('id', userId)
       .single();
-    
+
     if (data) set({ role: data.role });
-  },
-
-  signInWithMagicLink: async (email: string) => {
-    const { data, error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-      }
-    });
-    return { error };
-  },
-
-  signInWithGoogle: async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : undefined,
-      }
-    });
-    return { error };
   },
 
   promoteToManager: async (email: string) => {
@@ -54,7 +34,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    await nextAuthSignOut({ callbackUrl: '/' });
     set({ user: null, role: null });
   },
+
+  setUser: (user) => set({ user }),
 }));
