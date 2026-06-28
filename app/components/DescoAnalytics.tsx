@@ -32,19 +32,20 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const res = await fetch(`/api/desco?accountNo=${accountNo}`, {
+      // Fetching directly from DESCO, bypassing Vercel API route
+      const res = await fetch(`https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=${accountNo}`, {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: Failed to connect to DESCO proxy tunnel.`);
+        throw new Error(`HTTP ${res.status}: Failed to connect to DESCO server.`);
       }
       
       const jsonPayload = await res.json();
       
       // Target live balance payload
-      const liveData = jsonPayload?.balanceData?.data || jsonPayload?.data || {};
+      const liveData = jsonPayload?.data || jsonPayload || {};
       setMeterData(liveData);
 
       const fetchedBalance = Number(liveData.balance || 0);
@@ -77,7 +78,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
       if (err.name === 'AbortError') {
         setError('Connection timeout - using offline demo data');
       } else if (err instanceof TypeError) {
-        setError('DESCO servers unreachable - using offline demo data');
+        setError('DESCO servers unreachable or blocked by CORS - using offline demo data');
       } else {
         setError('DESCO network error - using offline demo data');
       }
