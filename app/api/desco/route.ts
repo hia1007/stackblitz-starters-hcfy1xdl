@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server';
 
+// 🚀 FORCES VERCEL NOT TO CACHE THIS ROUTE (Crucial for bypassing firewalls)
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 // Multiple realistic browser user agents to rotate through
 const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
-  'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:127.0) Gecko/20100101 Firefox/127.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
 ];
 
-// Get random user agent
 function getRandomUserAgent(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-// Exponential backoff retry logic
+// Exponential backoff retry logic with cache-busting
 async function fetchWithRetry(
-  url: string,
+  baseUrl: string,
   options: RequestInit,
   maxRetries: number = 3
 ): Promise<Response> {
@@ -26,14 +26,17 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Add random delay between retries (1-3 seconds)
       if (attempt > 0) {
         const delay = Math.random() * 2000 + 1000;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
+      // Add a dynamic timestamp to bypass aggressive firewall caching
+      const cacheBuster = `&_t=${new Date().getTime() + attempt}`;
+      const url = baseUrl.includes('?') ? `${baseUrl}${cacheBuster}` : `${baseUrl}?${cacheBuster}`;
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); 
 
       const response = await fetch(url, {
         ...options,
@@ -42,13 +45,10 @@ async function fetchWithRetry(
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
-        return response;
-      }
+      if (response.ok) return response;
 
-      // If 500+ error, retry; otherwise return the error response
-      if (response.status >= 500) {
-        lastError = new Error(`HTTP ${response.status}: Server error`);
+      if (response.status >= 500 || response.status === 403) {
+        lastError = new Error(`HTTP ${response.status}: Server or Firewall error`);
         console.log(`Attempt ${attempt + 1}/${maxRetries} failed with HTTP ${response.status}, retrying...`);
         continue;
       }
@@ -57,10 +57,7 @@ async function fetchWithRetry(
     } catch (error: any) {
       lastError = error;
       console.log(`Attempt ${attempt + 1}/${maxRetries} failed:`, error.message);
-
-      if (attempt === maxRetries - 1) {
-        throw lastError;
-      }
+      if (attempt === maxRetries - 1) throw lastError;
     }
   }
 
@@ -75,12 +72,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Account number missing in request.' }, { status: 400 });
   }
 
-  // Rotate user agent
   const userAgent = getRandomUserAgent();
 
+  // 🦊 MAXIMUM STEALTH HEADERS
   const headers = {
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
     'Accept-Language': 'en-US,en;q=0.9,bn;q=0.8',
     'User-Agent': userAgent,
     'Referer': 'https://prepaid.desco.org.bd/',
@@ -89,74 +86,50 @@ export async function GET(request: Request) {
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-origin',
-    'Cache-Control': 'no-cache',
     'Pragma': 'no-cache',
+    'Cache-Control': 'no-cache',
   };
 
   try {
-    console.log(`[DESCO] Fetching account ${accountNo} with UA: ${userAgent.substring(0, 50)}...`);
+    console.log(`[DESCO] Fetching account ${accountNo} with Stealth UA...`);
 
-    // Try primary endpoint first with retries
-    let balanceRes: Response | null = null;
     let balanceData: any = null;
-
-    try {
-      balanceRes = await fetchWithRetry(
-        `https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=${accountNo}`,
-        { headers, next: { revalidate: 300 } },
-        3
-      );
-
-      if (balanceRes.ok) {
-        balanceData = await balanceRes.json();
-        console.log(`[DESCO] Balance fetch successful (HTTP ${balanceRes.status})`);
-      } else {
-        console.log(`[DESCO] Balance fetch returned HTTP ${balanceRes.status}`);
-      }
-    } catch (error: any) {
-      console.error(`[DESCO] Balance fetch failed after retries:`, error.message);
-    }
-
-    // Fetch history data in parallel with retries
     let rechargeData: any = null;
 
+    // 1. Fetch Balance
     try {
-      const [res1, res2, res3, res4] = await Promise.all([
-        fetchWithRetry(
-          `https://prepaid.desco.org.bd/api/unified/customer/getRechargeHistory?accountNo=${accountNo}`,
-          { headers, next: { revalidate: 300 } },
-          2
-        ).catch(() => null),
-        fetchWithRetry(
-          `https://prepaid.desco.org.bd/api/tkdes/customer/getRechargeHistory?accountNo=${accountNo}`,
-          { headers, next: { revalidate: 300 } },
-          2
-        ).catch(() => null),
-        fetchWithRetry(
-          `https://prepaid.desco.org.bd/api/unified/customer/getVendingHistory?accountNo=${accountNo}`,
-          { headers, next: { revalidate: 300 } },
-          2
-        ).catch(() => null),
-        fetchWithRetry(
-          `https://prepaid.desco.org.bd/api/tkdes/customer/getVendingHistory?accountNo=${accountNo}`,
-          { headers, next: { revalidate: 300 } },
-          2
-        ).catch(() => null),
-      ]);
+      const balanceRes = await fetchWithRetry(
+        `https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=${accountNo}`,
+        { headers, cache: 'no-store' },
+        3
+      );
+      balanceData = await balanceRes.json();
+    } catch (error: any) {
+      console.error(`[DESCO] Balance fetch failed:`, error.message);
+    }
 
-      const historyResponses = await Promise.all([
-        res1?.ok ? res1.json() : null,
-        res2?.ok ? res2.json() : null,
-        res3?.ok ? res3.json() : null,
-        res4?.ok ? res4.json() : null,
-      ]);
+    // 2. Fetch History in Parallel
+    try {
+      const endpoints = [
+        `https://prepaid.desco.org.bd/api/unified/customer/getRechargeHistory?accountNo=${accountNo}`,
+        `https://prepaid.desco.org.bd/api/tkdes/customer/getRechargeHistory?accountNo=${accountNo}`,
+        `https://prepaid.desco.org.bd/api/unified/customer/getVendingHistory?accountNo=${accountNo}`,
+        `https://prepaid.desco.org.bd/api/tkdes/customer/getVendingHistory?accountNo=${accountNo}`
+      ];
 
-      // SMART CHECK: Find the response with actual data
-      for (const data of historyResponses) {
+      const historyPromises = endpoints.map(url => 
+        fetchWithRetry(url, { headers, cache: 'no-store' }, 2).catch(() => null)
+      );
+
+      const responses = await Promise.all(historyPromises);
+      const historyJsons = await Promise.all(
+        responses.map(res => res?.ok ? res.json().catch(() => null) : null)
+      );
+
+      for (const data of historyJsons) {
         if (data && data.code === 200 && Array.isArray(data.data) && data.data.length > 0) {
-          if (data.data[0].totalAmount !== undefined) {
+          if (data.data[0].totalAmount !== undefined || data.data[0].amount !== undefined) {
             rechargeData = data;
-            console.log('[DESCO] Recharge history fetch successful');
             break;
           }
         }
@@ -165,11 +138,11 @@ export async function GET(request: Request) {
       console.error('[DESCO] History fetch error:', error.message);
     }
 
-    if (!balanceData) {
-      throw new Error('DESCO balance fetch failed - no response data');
+    // If both failed, trigger the fallback block
+    if (!balanceData && !rechargeData) {
+      throw new Error('DESCO server refused all stealth connections.');
     }
 
-    // Return the verified payload
     return NextResponse.json(
       {
         balanceData,
@@ -180,20 +153,23 @@ export async function GET(request: Request) {
         status: 200,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Cache-Control': 'private, max-age=300',
+          'Cache-Control': 'no-store, max-age=0',
         },
       }
     );
+    
   } catch (error: any) {
     console.error('[DESCO] Proxy Error:', error.message);
+    
+    // Returning 200 with a fallback flag prevents the UI from throwing a hard 500 error page
     return NextResponse.json(
       {
         error: 'Failed to connect to DESCO grid servers',
         message: error.message,
+        fallback: true,
         timestamp: new Date().toISOString(),
       },
-      { status: 503 }
+      { status: 200 }
     );
   }
 }
