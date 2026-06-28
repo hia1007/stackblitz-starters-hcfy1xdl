@@ -4,6 +4,8 @@ import MealAdjuster from './components/MealAdjuster';
 import { useMessStore, calculateMeals } from './store/useMessStore';
 import BottomDock from './components/BottomDock';
 import { MoreVertical, UserPlus, Trash2, X } from 'lucide-react';
+// NEW: Imported the DESCO component
+import DescoAnalytics from './components/DescoAnalytics'; 
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'entries'>('ledger');
@@ -24,7 +26,6 @@ export default function Dashboard() {
 
   const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
 
-  // Added fetchData to the dependency array to clear the ESLint warning from your Vercel logs
   useEffect(() => { 
     fetchData(); 
   }, [fetchData]);
@@ -153,7 +154,6 @@ export default function Dashboard() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
-                  {/* FIX 2: Replaced the raw apostrophe with &apos; here! */}
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today&apos;s Transactions (Undo)</h3>
                   <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
                     {todaysPayments.length === 0 ? (
@@ -179,7 +179,6 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-
               </div>
             )}
           </div>
@@ -190,6 +189,10 @@ export default function Dashboard() {
       {activeTab === 'ledger' && (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
+          {/* NEW: DESCO GRID ANALYTICS COMPONENT */}
+          <DescoAnalytics accountNo="41095956" />
+
+          {/* Global Metrics Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Month Cost</p>
@@ -205,6 +208,7 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Financial Balance Sheets */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
             <div className="overflow-x-auto">
@@ -248,6 +252,7 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Individual Member Analytics */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <h2 className="text-2xl font-black text-slate-800">Individual Insights</h2>
@@ -319,6 +324,7 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* Historical Cost Registry */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Historical Cost Registry</h2>
             <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto pr-2 divide-y divide-slate-100">
@@ -354,6 +360,7 @@ export default function Dashboard() {
       {activeTab === 'entries' && (
         <div className="flex flex-col gap-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
+          {/* Daily Meal Matrix */}
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="text-2xl font-black text-slate-800">Daily Meal Matrix</h2>
@@ -370,6 +377,7 @@ export default function Dashboard() {
 
           <hr className="border-slate-200 border-dashed" />
 
+          {/* Post Payment Form */}
           <div className="max-w-2xl mx-auto w-full">
             <form onSubmit={handlePostPayment} className="p-6 md:p-10 rounded-squircle bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl flex flex-col gap-6 relative overflow-hidden">
               {successMessage && (
