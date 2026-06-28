@@ -12,10 +12,12 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
+  // Algorithmic State
   const [dailyUsage, setDailyUsage] = useState<number>(45);
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
 
   const fetchDescoData = async () => {
+    // Only show loading state on the very first mount; background updates stay silent
     if (!meterData) setIsLoading(true);
     setError('');
     
@@ -25,33 +27,33 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
       
       const jsonPayload = await res.json();
       
-      // Target live balance payload
+      // Isolate specific payloads
       const liveData = jsonPayload?.balanceData?.data || jsonPayload?.data || {};
       setMeterData(liveData);
 
-      // --- THE FIX: Look one level deeper for the nested array ---
-      let recharges = [];
-      if (jsonPayload?.rechargeData?.data && Array.isArray(jsonPayload.rechargeData.data)) {
-        recharges = jsonPayload.rechargeData.data;
-      } else if (jsonPayload?.rechargeData?.data?.data && Array.isArray(jsonPayload.rechargeData.data.data)) {
-        recharges = jsonPayload.rechargeData.data.data;
-      }
+      const recharges = jsonPayload?.rechargeData?.data || [];
       setRechargeHistory(recharges);
 
       const fetchedBalance = Number(liveData.balance || 0);
       
+      // Global low balance pop-up trigger set to 100 BDT
       if (fetchedBalance > 0 && fetchedBalance < 100) {
         setShowLowBalanceModal(true);
       }
 
+      // ====================================================================
+      // LIVE CONSUMPTION ALGORITHM (SEASONAL WEIGHTED RUN RATE)
+      // ====================================================================
       const consumption = Number(liveData.currentMonthConsumption || 0);
       const readingTime = liveData.readingTime || ''; 
 
       if (consumption > 0 && readingTime) {
         const dateParts = readingTime.split('-');
         const currentDay = parseInt(dateParts[2], 10); 
+
         if (currentDay > 0) {
-          setDailyUsage(consumption / currentDay);
+          const calculatedBurnRate = consumption / currentDay;
+          setDailyUsage(calculatedBurnRate);
         }
       } else {
         setDailyUsage(45); 
@@ -64,50 +66,64 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
     }
   };
 
+  // ====================================================================
+  // SMART BACKGROUND SCHEDULER (12:02 AM & 11:00 AM)
+  // ====================================================================
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
+
     const scheduleNextFetch = () => {
       const now = new Date();
+      
+      // Timeline targets for today
       const target12AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 2, 0); 
       const target11AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0); 
 
       let nextTarget: Date;
-      if (now < target12AM) nextTarget = target12AM;
-      else if (now < target11AM) nextTarget = target11AM;
-      else nextTarget = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 2, 0);
+
+      if (now < target12AM) {
+        nextTarget = target12AM;
+      } else if (now < target11AM) {
+        nextTarget = target11AM;
+      } else {
+        // If both times have passed today, schedule for 12:02 AM tomorrow
+        nextTarget = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 2, 0);
+      }
 
       const delay = nextTarget.getTime() - now.getTime();
+
       timeoutId = setTimeout(() => {
         fetchDescoData(); 
         scheduleNextFetch(); 
       }, delay);
     };
 
+    // 1. Fetch immediately on component mount
     fetchDescoData();
+    
+    // 2. Start the autonomous scheduler loop
     scheduleNextFetch();
+
     return () => clearTimeout(timeoutId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountNo]);
 
+  // Extract variables
   const balance = Number(meterData?.balance || 0);
   const isLowBalance = balance < 100;
   const remainingDays = dailyUsage > 0 ? Math.floor(balance / dailyUsage) : 0;
 
-  // Safe sorting algorithm for the newly found array
-  const sortedRecharges = [...rechargeHistory].sort((a, b) => {
-    const parseDate = (d: string) => {
-       if (!d) return 0;
-       return new Date(d.split('.')[0].replace(' ', 'T')).getTime();
-    };
-    return parseDate(b.rechargeDate) - parseDate(a.rechargeDate);
-  });
-  
+  // Extract Last Recharge (Sorting by date descending to ensure accuracy)
+  const sortedRecharges = [...rechargeHistory].sort((a, b) => 
+    new Date(b.rechargeDate).getTime() - new Date(a.rechargeDate).getTime()
+  );
   const latestRecharge = sortedRecharges.length > 0 ? sortedRecharges[0] : null;
 
   return (
     <>
       <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden relative">
         
+        {/* Header Control Panel */}
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
@@ -116,6 +132,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mt-1">A/C: {accountNo}</p>
           </div>
           
+          {/* Breathing Status Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-full border border-slate-200/50">
             <div 
               className={`w-3 h-3 rounded-full animate-pulse transition-colors duration-700 ${
@@ -130,6 +147,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
           </div>
         </div>
 
+        {/* Status Windows */}
         {error && !meterData ? (
           <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 font-bold mb-6">
             <AlertTriangle className="w-5 h-5" />
@@ -142,6 +160,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
         ) : (
           <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
             
+            {/* Balance & Last Recharge Display */}
             <div className={`p-6 rounded-2xl border flex justify-between items-center transition-colors ${isLowBalance ? 'bg-red-50/50 border-red-100' : 'bg-blue-50/50 border-blue-100'}`}>
               <div>
                 <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isLowBalance ? 'text-red-500' : 'text-blue-600'}`}>
@@ -150,6 +169,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
                 <p className="text-4xl font-black text-slate-900">৳ {balance.toFixed(2)}</p>
               </div>
               
+              {/* Last Recharge Details */}
               <div className="text-right flex flex-col items-end">
                 <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isLowBalance ? 'text-red-400' : 'text-slate-400'}`}>
                   Last Recharge
@@ -160,7 +180,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
                       +৳ {Number(latestRecharge.totalAmount).toFixed(2)}
                     </p>
                     <p className={`text-xs font-bold ${isLowBalance ? 'text-red-500/70' : 'text-slate-500'}`}>
-                      {new Date(latestRecharge.rechargeDate.split('.')[0].replace(' ', 'T')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {new Date(latestRecharge.rechargeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </>
                 ) : (
@@ -169,7 +189,9 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
               </div>
             </div>
 
+            {/* Metrics Breakdown Grid */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Dynamic Daily Burn Display */}
               <div className="p-4 bg-white/50 border border-slate-100 rounded-xl flex flex-col justify-center">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
                   <BrainCircuit className="w-3 h-3 text-purple-500" /> Current Run Rate
@@ -177,6 +199,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
                 <p className="text-sm font-black text-purple-700 mt-1">৳ {dailyUsage.toFixed(2)} / day</p>
               </div>
 
+              {/* Dynamic Day Estimation Output */}
               <div className={`p-4 border rounded-xl flex flex-col justify-center ${remainingDays <= 2 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
                 <p className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${remainingDays <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
                   Est. Time Left
@@ -188,6 +211,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
               </div>
             </div>
 
+            {/* Redirection Gateway Route */}
             <a 
               href="https://ekpay.gov.bd/#/dedicated-biller/desco-prepaid" 
               target="_blank" 
@@ -200,6 +224,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
         )}
       </div>
 
+      {/* Low Balance Guard Modal Popup */}
       {showLowBalanceModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full flex flex-col items-center text-center relative animate-in zoom-in-95 duration-200">
