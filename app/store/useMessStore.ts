@@ -23,8 +23,7 @@ interface MessStore {
   deleteMember: (id: string) => Promise<void>;
 }
 
-const defaultMeals: MealOptions = { noon: false, night: false, hasGuest: false, guestNoon: false, guestNight: false, is_edited: false };
-
+export const defaultMeals: MealOptions = { noon: false, night: false, hasGuest: false, guestNoon: false, guestNight: false, is_edited: false };
 export const calculateMeals = (meals?: MealOptions) => {
   if (!meals) return 0;
   let total = (meals.noon ? 1 : 0) + (meals.night ? 1 : 0);

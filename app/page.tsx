@@ -24,11 +24,11 @@ export default function Dashboard() {
 
   const { roommates, dailyMeals, payments, selectedDate, setSelectedDate, fetchData, isLoaded, addPayment, addMember, deleteMember, deletePayment } = useMessStore();
 
+  // Added fetchData to the dependency array to clear the ESLint warning from your Vercel logs
   useEffect(() => { 
     fetchData(); 
-  }, []);
+  }, [fetchData]);
 
-  // 🔄 FIX: Neither dropdown auto-selects a user anymore
   useEffect(() => {
     if (roommates.length > 0) {
       if (selectedAnalyticsUser && !roommates.some(r => r.id === selectedAnalyticsUser)) {
@@ -48,7 +48,6 @@ export default function Dashboard() {
     );
   }
 
-  // --- GLOBAL METRICS CALCULATION ---
   let totalMeals = 0;
   Object.values(dailyMeals).forEach(day => {
     roommates.forEach(r => { 
@@ -59,7 +58,6 @@ export default function Dashboard() {
   const totalCost = roommates.reduce((sum, r) => sum + r.spent, 0);
   const mealRate = totalMeals > 0 ? totalCost / totalMeals : 0;
 
-  // --- INDIVIDUAL METRICS CALCULATION ---
   const activeRoommate = roommates.find(r => r.id === selectedAnalyticsUser);
   let individualMeals = 0;
   const individualHistory: { date: string; data: any }[] = [];
@@ -77,21 +75,18 @@ export default function Dashboard() {
     individualHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
-  // --- FILTER TODAY'S PAYMENTS FOR UNDO OPTIONS ---
   const todayLocalString = new Date().toLocaleDateString();
   const todaysPayments = payments.filter(p => new Date(p.created_at).toLocaleDateString() === todayLocalString);
 
   const handlePostPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 🔄 FIX: Require a user selection to proceed
     if (!selectedUser) return alert("Please select a Source Entity (Member) before committing the transaction.");
     if (!amount || !note) return alert("Please fill out both the amount and note.");
     
     setIsSubmitting(true);
     try {
       await addPayment(selectedUser, Number(amount), note);
-      setSelectedUser(''); // Resets the dropdown back to "Select a member..."
+      setSelectedUser('');
       setAmount('');
       setNote('');
       setSuccessMessage('Payment successfully posted!');
@@ -113,7 +108,6 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative overflow-x-hidden">
       
-      {/* HEADER & CONDITIONALLY RENDERED 3-DOT MENU */}
       <header className="flex justify-between items-center pt-4 relative z-50 min-h-[60px]">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">Bachelor Mess Tracker</h1>
         
@@ -159,7 +153,8 @@ export default function Dashboard() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-4 mt-1 flex flex-col gap-2">
-                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today's Transactions (Undo)</h3>
+                  {/* FIX 2: Replaced the raw apostrophe with &apos; here! */}
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Today&apos;s Transactions (Undo)</h3>
                   <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
                     {todaysPayments.length === 0 ? (
                       <p className="text-xs text-slate-400 italic">No transactions posted today.</p>
@@ -195,7 +190,6 @@ export default function Dashboard() {
       {activeTab === 'ledger' && (
         <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* Global Metrics Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 rounded-squircle bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center">
               <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Month Cost</p>
@@ -211,7 +205,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Financial Balance Sheets */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
             <div className="overflow-x-auto">
@@ -255,7 +248,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Individual Member Analytics */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <h2 className="text-2xl font-black text-slate-800">Individual Insights</h2>
@@ -327,7 +319,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Historical Cost Registry */}
           <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
             <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Historical Cost Registry</h2>
             <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto pr-2 divide-y divide-slate-100">
@@ -363,7 +354,6 @@ export default function Dashboard() {
       {activeTab === 'entries' && (
         <div className="flex flex-col gap-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
           
-          {/* Daily Meal Matrix */}
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h2 className="text-2xl font-black text-slate-800">Daily Meal Matrix</h2>
@@ -380,7 +370,6 @@ export default function Dashboard() {
 
           <hr className="border-slate-200 border-dashed" />
 
-          {/* Post Payment Form */}
           <div className="max-w-2xl mx-auto w-full">
             <form onSubmit={handlePostPayment} className="p-6 md:p-10 rounded-squircle bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl flex flex-col gap-6 relative overflow-hidden">
               {successMessage && (
@@ -397,7 +386,6 @@ export default function Dashboard() {
                   onChange={(e) => setSelectedUser(e.target.value)}
                   className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none shadow-sm cursor-pointer"
                 >
-                  {/* 🔄 FIX: Included the blank default selection here as well */}
                   <option value="">Select a member...</option>
                   {roommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
