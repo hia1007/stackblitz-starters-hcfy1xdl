@@ -1,28 +1,27 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { signIn, signOut, useSession } from 'next-auth/react';
+import { useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { Mail } from 'lucide-react';
 
 export default function LoginButton() {
-  const { data: session, status } = useSession();
-  const sessionUser = session?.user ?? null;
-  const { fetchProfile } = useAuthStore();
-  const [loading, setLoading] = useState(false);
+  const { user, signOut, setUser } = useAuthStore();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    useAuthStore.setState({ user: sessionUser });
-    if (sessionUser?.id) fetchProfile(sessionUser.id as string);
-  }, [sessionUser, fetchProfile]);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (code.trim() === '2022') {
+      // Grant manager access locally
+      useAuthStore.setState({ user: { id: 'manager-local', name: 'Manager' }, role: 'manager' });
+      setCode('');
+    } else {
+      setError('Invalid manager code.');
+    }
+  };
 
-  if (status === 'loading') return <div className="px-4 py-2">Loading...</div>;
-
-  if (sessionUser) {
+  if (user) {
     return (
-      <button
-        onClick={() => signOut({ callbackUrl: '/' })}
-        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
-      >
+      <button onClick={signOut} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors">
         Logout
       </button>
     );
@@ -30,19 +29,28 @@ export default function LoginButton() {
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-md">
-      <button
-        onClick={() => {
-          setLoading(true);
-          signIn('auth0').finally(() => setLoading(false));
-        }}
-        disabled={loading}
-        className="w-full bg-white border-2 border-gray-300 hover:border-gray-400 text-gray-900 px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
-          <circle cx="12" cy="12" r="10" fill="#111827" />
-        </svg>
-        {loading ? 'Signing in...' : 'Sign in with Auth0'}
-      </button>
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <input
+          type="password"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Enter manager code"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          required
+        />
+        <button
+          type="submit"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+        >
+          Enter
+        </button>
+      </form>
+      {error && <div className="text-red-600 text-sm font-semibold">{error}</div>}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 border-t border-gray-300"></div>
+        <span className="text-sm text-gray-500">Manager access</span>
+        <div className="flex-1 border-t border-gray-300"></div>
+      </div>
     </div>
   );
 }
