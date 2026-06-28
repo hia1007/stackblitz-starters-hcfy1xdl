@@ -5,6 +5,7 @@ interface AuthState {
   user: any;
   role: 'manager' | 'member' | null;
   signInWithMagicLink: (email: string) => Promise<{ error: any }>;
+  signInWithGoogle: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
   promoteToManager: (email: string) => Promise<{ error: any }>;
@@ -29,6 +30,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       email,
       options: {
         emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      }
+    });
+    return { error };
+  },
+
+  signInWithGoogle: async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : undefined,
       }
     });
     return { error };
