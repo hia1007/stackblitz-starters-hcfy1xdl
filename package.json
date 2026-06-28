@@ -19,7 +19,6 @@
     "framer-motion": "^12.42.0",
     "lucide-react": "^1.21.0",
     "next": "13.5.1",
-    "next-auth": "^4.25.0",
     "postcss": "8.4.30",
     "react": "18.2.0",
     "react-dom": "18.2.0",
