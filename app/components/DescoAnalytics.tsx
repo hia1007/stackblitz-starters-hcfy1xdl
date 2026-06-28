@@ -19,8 +19,17 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
     setError('');
     
     try {
-      const res = await fetch(`/api/desco?accountNo=${accountNo}`);
-      if (!res.ok) throw new Error('Failed to connect to proxy tunnel.');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const res = await fetch(`/api/desco?accountNo=${accountNo}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Failed to connect to proxy tunnel.`);
+      }
       
       const jsonPayload = await res.json();
       
@@ -47,8 +56,15 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
         setDailyUsage(45); 
       }
 
-    } catch (err) {
-      setError('DESCO network timeout or unreachable.');
+    } catch (err: any) {
+      console.error('DESCO fetch error:', err);
+      if (err.name === 'AbortError') {
+        setError('DESCO network timeout (10s limit exceeded). Please try again.');
+      } else if (err instanceof TypeError) {
+        setError('Network error - cannot reach DESCO servers. Check your connection.');
+      } else {
+        setError(err.message || 'DESCO network timeout or unreachable.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +128,10 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
         {error && !meterData ? (
           <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 font-bold mb-6">
             <AlertTriangle className="w-5 h-5" />
-            <p className="text-sm">{error}</p>
+            <div>
+              <p className="text-sm">{error}</p>
+              <p className="text-xs text-red-500 mt-1">DESCO servers may be temporarily unavailable. Data will sync when service is restored.</p>
+            </div>
           </div>
         ) : isLoading && !meterData ? (
           <div className="h-32 flex items-center justify-center">
