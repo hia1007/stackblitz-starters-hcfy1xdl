@@ -22,7 +22,12 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
     setError('');
     
     try {
-      const res = await fetch(`/api/desco?accountNo=${accountNo}`);
+      const res = await fetch(`https://prepaid.desco.org.bd/api/unified/customer/getBalance?accountNo=${accountNo}`, {
+  headers: {
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+  }
+});
       if (!res.ok) throw new Error('Failed to connect to proxy tunnel.');
       
       const jsonPayload = await res.json();
