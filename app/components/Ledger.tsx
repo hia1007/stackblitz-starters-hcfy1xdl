@@ -1,78 +1,92 @@
 'use client';
-
-import React, { useState } from 'react';
-import { useMessStore } from '../store/useMessStore';
+import React from 'react';
+import { useMessStore, calculateMeals } from '../store/useMessStore';
 
 export default function Ledger() {
-  const { roommates, addMember, deleteMember } = useMessStore();
-  const [newName, setNewName] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
+  const { roommates, dailyMeals, payments } = useMessStore();
 
-  const handleAddMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
-
-    setIsAdding(true);
-    await addMember(newName.trim()); 
-    setNewName('');
-    setIsAdding(false);
-  };
+  let absoluteMeals = 0;
+  Object.values(dailyMeals).forEach(day => {
+    roommates.forEach(r => { 
+      if (day[r.id]) absoluteMeals += calculateMeals(day[r.id]); 
+    });
+  });
+  const absoluteCost = roommates.reduce((sum, r) => sum + r.spent, 0);
+  const sharedRate = absoluteMeals > 0 ? absoluteCost / absoluteMeals : 0;
 
   return (
-    <div className="max-w-2xl mx-auto w-full flex flex-col gap-6">
+    <div className="max-w-4xl mx-auto w-full flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
       
-      {/* ➕ ADD NEW MEMBER FORM */}
-      <div className="p-6 rounded-squircle bg-white/50 backdrop-blur-2xl border border-white/60 shadow-lg">
-        <h2 className="text-xl font-black text-slate-800 tracking-tight mb-4">Add New Mess Member</h2>
-        <form onSubmit={handleAddMember} className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Enter member's name (e.g., Sifat)..."
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="flex-grow bg-white/60 border border-white/40 rounded-xl p-3 text-slate-800 font-bold focus:ring-2 focus:ring-blue-400 outline-none transition-all shadow-inner"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isAdding}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            {isAdding ? 'Adding...' : 'Add'}
-          </button>
-        </form>
+      {/* 📊 EXISTING MEMBERS SUMMARY */}
+      <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl overflow-hidden">
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Financial Balance Sheets</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b-2 border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider">
+                <th className="pb-4">Member Entity</th>
+                <th className="pb-4">Meals</th>
+                <th className="pb-4">Funded (BDT)</th>
+                <th className="pb-4">Cost (BDT)</th>
+                <th className="pb-4 text-right">Net Balance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm font-bold text-slate-700">
+              {roommates.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-medium">No members registered in roster.</td></tr>
+              ) : (
+                roommates.map((member) => {
+                  let individualMeals = 0;
+                  Object.values(dailyMeals).forEach(day => {
+                    if(day[member.id]) individualMeals += calculateMeals(day[member.id]);
+                  });
+                  const individualCost = individualMeals * sharedRate;
+                  const finalBalance = member.spent - individualCost;
+
+                  return (
+                    <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4">{member.name}</td>
+                      <td className="py-4 text-slate-500">{individualMeals}</td>
+                      <td className="py-4 text-emerald-600">৳{member.spent.toFixed(2)}</td>
+                      <td className="py-4 text-amber-600">৳{individualCost.toFixed(2)}</td>
+                      <td className={`py-4 text-right font-black ${finalBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {finalBalance >= 0 ? '+' : '-'}৳{Math.abs(finalBalance).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* 📊 EXISTING MEMBERS SUMMARY */}
-      <div className="p-6 rounded-squircle bg-white/50 backdrop-blur-2xl border border-white/60 shadow-lg">
-        <h2 className="text-xl font-black text-slate-800 tracking-tight mb-4">Current Members Summary</h2>
-        <div className="divide-y divide-white/40">
-          {roommates.length === 0 ? (
-            <p className="text-sm text-slate-500 font-medium py-4 text-center">No members added yet. Create one above!</p>
+      {/* 📝 TRANSACTION HISTORY */}
+      <div className="p-6 md:p-8 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl">
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-6">Historical Cost Registry</h2>
+        <div className="flex flex-col gap-4 max-h-[400px] overflow-y-auto pr-2 divide-y divide-slate-100">
+          {payments.length === 0 ? (
+            <p className="text-sm text-slate-500 italic text-center py-4">No transactions logged in the registry yet.</p>
           ) : (
-            roommates.map((member) => (
-              <div key={member.id} className="flex justify-between items-center py-3">
-                <div className="flex flex-col">
-                  <span className="font-bold text-slate-800">{member.name}</span>
-                  <span className="text-xs font-semibold text-slate-500">ID: {member.id}</span>
+            payments.map((log) => {
+              const payer = roommates.find(r => r.id === log.roommate_id);
+              return (
+                <div key={log.id} className="flex justify-between items-center py-3 first:pt-0">
+                  <div>
+                    <p className="text-base font-bold text-slate-800">{log.description}</p>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider mt-1">
+                      Posted by <span className="text-blue-600">{payer ? payer.name : 'Unknown Entity'}</span>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-black text-emerald-600">+ ৳{Number(log.amount).toFixed(2)}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                      {new Date(log.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-extrabold text-slate-600 bg-white/60 px-3 py-1 rounded-lg">
-                    Spent: ${member.spent.toFixed(2)}
-                  </span>
-                  <button 
-                    onClick={() => {
-                      if(confirm(`Are you sure you want to remove ${member.name}?`)) {
-                        deleteMember(member.id);
-                      }
-                    }}
-                    className="text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg transition-colors"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
