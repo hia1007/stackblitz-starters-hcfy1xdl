@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { Zap, AlertTriangle, CreditCard, Clock, BrainCircuit } from 'lucide-react';
+import { Zap, AlertTriangle, CreditCard, Clock, BrainCircuit, X } from 'lucide-react';
 
 interface DescoAnalyticsProps {
   accountNo?: string;
