@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { Zap, AlertTriangle, CreditCard, Clock, BrainCircuit, X } from 'lucide-react';
+import { Zap, AlertTriangle, CreditCard, Clock, BrainCircuit, X, RefreshCw } from 'lucide-react';
 
 interface DescoAnalyticsProps {
   accountNo?: string;
@@ -10,13 +10,23 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
   const [meterData, setMeterData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
   
   const [dailyUsage, setDailyUsage] = useState<number>(45);
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
 
+  // Demo/Fallback data when DESCO is unavailable
+  const demoData = {
+    balance: 450.75,
+    currentMonthConsumption: 1234,
+    readingTime: '2026-06-28',
+    status: 'offline'
+  };
+
   const fetchDescoData = async () => {
     if (!meterData) setIsLoading(true);
     setError('');
+    setIsOfflineMode(false);
     
     try {
       const controller = new AbortController();
@@ -28,7 +38,7 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
       clearTimeout(timeoutId);
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: Failed to connect to proxy tunnel.`);
+        throw new Error(`HTTP ${res.status}: Failed to connect to DESCO proxy tunnel.`);
       }
       
       const jsonPayload = await res.json();
@@ -58,12 +68,18 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
 
     } catch (err: any) {
       console.error('DESCO fetch error:', err);
+      
+      // Use offline/demo mode as fallback
+      setIsOfflineMode(true);
+      setMeterData(demoData);
+      setDailyUsage(45);
+      
       if (err.name === 'AbortError') {
-        setError('DESCO network timeout (10s limit exceeded). Please try again.');
+        setError('Connection timeout - using offline demo data');
       } else if (err instanceof TypeError) {
-        setError('Network error - cannot reach DESCO servers. Check your connection.');
+        setError('DESCO servers unreachable - using offline demo data');
       } else {
-        setError(err.message || 'DESCO network timeout or unreachable.');
+        setError('DESCO network error - using offline demo data');
       }
     } finally {
       setIsLoading(false);
@@ -111,21 +127,44 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mt-1">A/C: {accountNo}</p>
           </div>
           
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-full border border-slate-200/50">
-            <div 
-              className={`w-3 h-3 rounded-full animate-pulse transition-colors duration-700 ${
-                isLowBalance 
-                  ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' 
-                  : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
-              }`}
-            ></div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-              {isLoading ? 'Syncing' : 'Live'}
-            </span>
+          <div className="flex items-center gap-3">
+            {isOfflineMode && (
+              <button
+                onClick={() => fetchDescoData()}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-100 rounded-full border border-amber-200 hover:bg-amber-200 transition-colors"
+                title="Retry connection"
+              >
+                <RefreshCw className="w-3 h-3 text-amber-600" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600">Retry</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/80 rounded-full border border-slate-200/50">
+              <div 
+                className={`w-3 h-3 rounded-full animate-pulse transition-colors duration-700 ${
+                  isOfflineMode
+                    ? 'bg-amber-500 shadow-[0_0_8px_rgba(217,119,6,0.8)]'
+                    : isLowBalance 
+                    ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' 
+                    : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                }`}
+              ></div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                {isLoading ? 'Syncing' : isOfflineMode ? 'Offline' : 'Live'}
+              </span>
+            </div>
           </div>
         </div>
 
-        {error && !meterData ? (
+        {isOfflineMode && meterData ? (
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3 text-amber-700 font-bold mb-6">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm">⚡ DESCO Server Offline</p>
+              <p className="text-xs text-amber-600 mt-1">Showing demo data. Live data will sync when DESCO service is restored.</p>
+              <p className="text-xs text-amber-600 mt-1 italic">💡 This is sample data for demonstration purposes.</p>
+            </div>
+          </div>
+        ) : error && !meterData ? (
           <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 font-bold mb-6">
             <AlertTriangle className="w-5 h-5" />
             <div>
@@ -141,11 +180,12 @@ export default function DescoAnalytics({ accountNo = '41095956' }: DescoAnalytic
           <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
             
             {/* Cleanly Centered Balance Placeholder */}
-            <div className={`p-8 rounded-2xl border flex flex-col items-center justify-center transition-colors ${isLowBalance ? 'bg-red-50/50 border-red-100' : 'bg-blue-50/50 border-blue-100'}`}>
-              <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isLowBalance ? 'text-red-500' : 'text-blue-600'}`}>
+            <div className={`p-8 rounded-2xl border flex flex-col items-center justify-center transition-colors ${isLowBalance ? 'bg-red-50/50 border-red-100' : isOfflineMode ? 'bg-amber-50/50 border-amber-100' : 'bg-blue-50/50 border-blue-100'}`}>
+              <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isLowBalance ? 'text-red-500' : isOfflineMode ? 'text-amber-600' : 'text-blue-600'}`}>
                 Current Balance
               </p>
               <p className="text-5xl font-black text-slate-900">৳ {balance.toFixed(2)}</p>
+              {isOfflineMode && <p className="text-xs text-amber-600 mt-2 italic">Demo Mode</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
