@@ -1,11 +1,10 @@
 'use client';
-import { useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { Mail } from 'lucide-react';
 
 export default function LoginButton() {
   const { user, signInWithMagicLink, signInWithGoogle, signOut } = useAuthStore();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = use State('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
