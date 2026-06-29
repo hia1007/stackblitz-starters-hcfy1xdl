@@ -94,14 +94,13 @@ export default function Dashboard() {
   // ⚡ DYNAMIC TIMELINE FILTERING ⚡
   // ==========================================
   const activeRoommatesForMonth = roommates.filter(r => {
-    // 1. If they have never been archived, they are active
-    if (!r.archived_month) return true;
-    
-    // 2. If we are viewing a month BEFORE they were archived, they are active
-    if (selectedMonth < r.archived_month) return true;
+    // 1. Core Check: If they are active, they are visible.
+    // We explicitly check for !== false so older entries without the boolean don't disappear.
+    if (r.isActive !== false) return true;
 
-    // 3. ACCOUNTING FAILSAFE: If they have data in THIS month, keep them visible 
-    // to prevent math corruption (forces manager to clear their meals first)
+    // 2. ACCOUNTING FAILSAFE: If they have been deleted (isActive === false), 
+    // we STILL show them in the ledger ONLY IF they have financial/meal data in the currently selected month.
+    // This prevents math corruption for historical months.
     const hasMealsThisMonth = monthlyDates.some(date => dailyMeals[date]?.[r.id]);
     const hasPaymentsThisMonth = monthlyPayments.some(p => p.roommate_id === r.id);
     

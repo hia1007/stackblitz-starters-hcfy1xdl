@@ -1,15 +1,39 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useMessStore } from '../store/useMessStore';
 
 export default function PaymentForm() {
   const [amount, setAmount] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [note, setNote] = useState('');
+  
+  // Pull the addPayment function
+  const addPayment = useMessStore((state) => state.addPayment);
+  
+  // Filter active members safely for the dropdown
+  const activeRoommates = useMessStore((state) => 
+    state.roommates.filter((r) => r.isActive !== false)
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Connect this to your store or Supabase backend
-    console.log('Submitting payment for:', amount);
-    setAmount(''); 
+    
+    if (!selectedUserId) {
+        alert("Please select a member.");
+        return;
+    }
+
+    try {
+        // Enforce conversion to Number here!
+        await addPayment(selectedUserId, Number(amount), note || "Deposit");
+        alert("Payment added successfully!");
+        setAmount(''); 
+        setNote('');
+        setSelectedUserId('');
+    } catch (error: any) {
+        alert(`Failed to submit payment transaction: ${error.message}`);
+    }
   };
 
   return (
@@ -17,12 +41,25 @@ export default function PaymentForm() {
       <h2 className="mb-4 text-lg font-semibold text-gray-800">Add Payment</h2>
       
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        
         <div>
-          <label htmlFor="amount" className="block mb-1 text-sm font-medium text-gray-700">
-            Amount
-          </label>
+          <label className="block mb-1 text-sm font-medium text-gray-700">Member</label>
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          >
+            <option value="" disabled>Select a member</option>
+            {activeRoommates.map((user) => (
+                <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block mb-1 text-sm font-medium text-gray-700">Amount (৳)</label>
           <input
-            id="amount"
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}

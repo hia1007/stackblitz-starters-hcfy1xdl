@@ -1,29 +1,34 @@
 'use client';
 
 import React from 'react';
+import { useMessStore } from '../store/useMessStore';
+import MealAdjuster from './MealAdjuster'; 
 
 export default function MealList() {
-  // Dummy data to check if the component renders properly
-  const dummyMeals = [
-    { id: 1, name: 'Breakfast', count: 1 },
-    { id: 2, name: 'Lunch', count: 2 },
-    { id: 3, name: 'Dinner', count: 1 },
-  ];
+  // Best practice: Select the array and filter it here so React re-renders instantly when isActive changes
+  const activeRoommates = useMessStore((state) => 
+    state.roommates.filter((r) => r.isActive !== false)
+  );
+
+  if (activeRoommates.length === 0) {
+    return (
+      <div className="p-4 text-center text-gray-500 bg-white border border-gray-200 rounded-lg shadow-sm">
+        No active members found for this month.
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-gray-800">Meal List</h2>
-      
-      <ul className="divide-y divide-gray-200">
-        {dummyMeals.map((meal) => (
-          <li key={meal.id} className="flex items-center justify-between py-3 text-sm">
-            <span className="font-medium text-gray-700">{meal.name}</span>
-            <span className="px-2 py-1 text-xs font-semibold text-blue-800 bg-blue-100 rounded-full">
-              {meal.count} meals
-            </span>
-          </li>
-        ))}
-      </ul>
+    <div className="flex flex-col gap-4">
+      {/* Map through active users and render their individual meal controls */}
+      {activeRoommates.map((roommate) => (
+        <MealAdjuster
+          key={roommate.id}
+          id={roommate.id}
+          name={roommate.name}
+          spent={roommate.spent}
+        />
+      ))}
     </div>
   );
 }

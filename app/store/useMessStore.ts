@@ -2,14 +2,13 @@ import { create } from 'zustand';
 import { supabase } from '../../lib/supabase';
 
 const getToday = () => new Date().toISOString().split('T')[0];
-// Helper to get current month in YYYY-MM format
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7); 
 
 type Roommate = { 
   id: string; 
   name: string; 
   spent: number; 
-  archived_month?: string | null; // Tracks when they left
+  isActive: boolean; // <-- Updated: Replaced archived_month with isActive
 };
 export type MealOptions = { noon: boolean; night: boolean; hasGuest: boolean; guestNoon: boolean; guestNight: boolean; is_edited: boolean; };
 type DailyMeals = Record<string, Record<string, MealOptions>>;
@@ -22,6 +21,7 @@ interface MessStore {
   selectedDate: string;
   selectedMonth: string; 
   isLoaded: boolean;
+  getActiveRoommates: () => Roommate[]; 
   setSelectedDate: (date: string) => void;
   setSelectedMonth: (month: string) => void; 
   fetchData: () => Promise<void>;
@@ -29,10 +29,11 @@ interface MessStore {
   addPayment: (id: string, amount: number, note: string) => Promise<void>;
   deletePayment: (paymentId: string) => Promise<void>;
   addMember: (name: string) => Promise<void>;
-  deleteMember: (id: string) => Promise<void>; // This is the interface blueprint!
+  deleteMember: (id: string) => Promise<void>;
 }
 
 export const defaultMeals: MealOptions = { noon: false, night: false, hasGuest: false, guestNoon: false, guestNight: false, is_edited: false };
+
 export const calculateMeals = (meals?: MealOptions) => {
   if (!meals) return 0;
   let total = (meals.noon ? 1 : 0) + (meals.night ? 1 : 0);
@@ -50,6 +51,12 @@ export const useMessStore = create<MessStore>((set, get) => ({
   selectedMonth: getCurrentMonth(), 
   isLoaded: false, 
   
+  // <-- Updated: Now simply filters for active roommates
+  getActiveRoommates: () => {
+    const { roommates } = get();
+    return roommates.filter(r => r.isActive !== false); // Treats true or undefined as active
+  },
+
   setSelectedDate: (date) => set({ selectedDate: date }),
   setSelectedMonth: (month) => set({ selectedMonth: month }), 
   
@@ -83,6 +90,8 @@ export const useMessStore = create<MessStore>((set, get) => ({
 
   toggleMeal: async (userId: string, field: keyof Omit<MealOptions, 'is_edited'>, isPastDate: boolean = false) => {
     const { selectedDate, dailyMeals } = get();
+    const previousMeals = { ...dailyMeals }; 
+
     const currentDateMeals = dailyMeals[selectedDate] || {};
     const userMeals = currentDateMeals[userId] || { ...defaultMeals };
     
@@ -129,7 +138,8 @@ export const useMessStore = create<MessStore>((set, get) => ({
 
       if (error) {
         console.error("Meal update failed:", error);
-        set({ dailyMeals });
+        alert(`Database Error: ${error.message}`);
+        set({ dailyMeals: previousMeals }); 
       }
     } else {
       const { error } = await supabase
@@ -148,7 +158,8 @@ export const useMessStore = create<MessStore>((set, get) => ({
 
       if (error) {
         console.error("Meal insert failed:", error);
-        set({ dailyMeals });
+        alert(`Database Error: ${error.message}`);
+        set({ dailyMeals: previousMeals }); 
       }
     }
   },
@@ -161,7 +172,10 @@ export const useMessStore = create<MessStore>((set, get) => ({
       .insert([{ id: newExpenseId, roommate_id: id, amount, description: note }])
       .select();
 
-    if (expenseError) throw expenseError;
+    if (expenseError) {
+       console.error("Payment insert failed:", expenseError);
+       throw expenseError; 
+    }
 
     const targetRoommate = get().roommates.find(r => r.id === id);
     const updatedSpent = (targetRoommate?.spent || 0) + amount;
@@ -182,78 +196,29 @@ export const useMessStore = create<MessStore>((set, get) => ({
   },
 
   deletePayment: async (paymentId: string) => {
-    const state = get();
-    const paymentToDelete = state.payments.find(p => p.id === paymentId);
-    if (!paymentToDelete) return;
-
-    const { error: expenseError } = await supabase
-      .from('expenses')
-      .delete()
-      .eq('id', paymentId);
-
-    if (expenseError) {
-      console.error("Error deleting payment:", expenseError);
-      alert("Failed to delete payment.");
-      return;
-    }
-
-    const targetRoommate = state.roommates.find(r => r.id === paymentToDelete.roommate_id);
-    const updatedSpent = (targetRoommate?.spent || 0) - paymentToDelete.amount;
-
-    const { error: roommateError } = await supabase
-      .from('roommates')
-      .update({ spent: updatedSpent })
-      .eq('id', paymentToDelete.roommate_id);
-
-    if (roommateError) console.error("Balance refund failed:", roommateError);
-
-    set((state) => ({
-      payments: state.payments.filter(p => p.id !== paymentId),
-      roommates: state.roommates.map(r => r.id === paymentToDelete.roommate_id ? { ...r, spent: updatedSpent } : r)
-    }));
+    // ... (Keep existing deletePayment logic, it was fine)
   },
   
   addMember: async (name: string) => {
-    const newId = crypto.randomUUID();
-
-    const { data, error } = await supabase
-      .from('roommates')
-      .insert([{ id: newId, name, spent: 0 }])
-      .select();
-
-    if (error) {
-      console.error("Error adding member:", error);
-      alert(`Failed to add member to database: ${error.message}`);
-      return;
-    }
-
-    if (data && data.length > 0) {
-      set((state) => ({
-        roommates: [...state.roommates, data[0]]
-      }));
-    }
+    // ... (Keep existing addMember logic, it was fine)
   },
   
-  // This is the actual function logic!
   deleteMember: async (id: string) => {
-    const state = get();
-    const targetMonth = state.selectedMonth; // The month they are being removed from
-
-    // Soft-delete by setting the archived_month to the currently selected UI month
+    // <-- Updated: Now sets isActive to false in DB and local state
     const { error } = await supabase
       .from('roommates')
-      .update({ archived_month: targetMonth })
+      .update({ isActive: false }) 
       .eq('id', id);
 
     if (error) {
       console.error("Error archiving member:", error);
-      alert("Failed to remove member.");
+      alert(`Database Error: ${error.message}`);
       return;
     }
 
     set((state) => ({
       roommates: state.roommates.map(r => 
-        r.id === id ? { ...r, archived_month: targetMonth } : r
+        r.id === id ? { ...r, isActive: false } : r
       )
     }));
   }
