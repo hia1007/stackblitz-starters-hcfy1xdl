@@ -95,13 +95,18 @@ export default function Dashboard() {
   const strictlyActiveRoommates = roommates.filter(r => r.is_active !== false);
 
   // 2. LEDGER LIST: Active members PLUS deleted members who have history this month (For Math & Ledgers)
+  const now = new Date();
+  const currentCalendarMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
   const ledgerRoommatesForMonth = roommates.filter(r => {
-    if (r.is_active !== false) return true; 
-
     const hasMealsThisMonth = monthlyDates.some(date => dailyMeals[date]?.[r.id]);
     const hasPaymentsThisMonth = monthlyPayments.some(p => p.roommate_id === r.id);
     
-    return hasMealsThisMonth || hasPaymentsThisMonth;
+    // If they have activity, always show them in the ledger
+    if (hasMealsThisMonth || hasPaymentsThisMonth) return true;
+
+    // Rule B: If they have 0 activity, ONLY show them if they are active AND we are looking at the current or future month
+    return r.is_active !== false && selectedMonth >= currentCalendarMonth;
   });
 
   // Calculate totals based on the LEDGER list

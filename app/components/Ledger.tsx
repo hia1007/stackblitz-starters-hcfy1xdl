@@ -10,20 +10,30 @@ interface LedgerProps {
 export default function Ledger({ selectedMonth }: LedgerProps) {
   const { roommates, dailyMeals, payments } = useMessStore();
 
-  // Filter members dynamically based on activity status and historical transaction data
-  const visibleLedgerMembers = roommates.filter((roommate) => {
-    // 1. Active members are always included in calculation pools
-    if (roommate.is_active !== false) return true; 
+  // Get the current real-world month to compare against the selected ledger month
+  const currentCalendarMonth = new Date().toISOString().slice(0, 7);
 
-    // 2. Inactive members are included only if they consumed meals this month
-    // We get all dates in dailyMeals that start with the selected "YYYY-MM"
+  // Filter members dynamically based on activity and database creation date
+  const visibleLedgerMembers = roommates.filter((roommate) => {
+    
+    // 1. THE BULLETPROOF RULE: Use Supabase's automatic 'created_at' timestamp.
+    // If the selected ledger month is BEFORE they were even created in the database, hide them immediately.
+    const createdAt = (roommate as any).created_at;
+    if (createdAt) {
+      const joinedMonth = createdAt.substring(0, 7);
+      if (selectedMonth < joinedMonth) {
+        return false; 
+      }
+    }
+
+    // 2. Check if they consumed any meals in the selected month
     const datesInMonth = Object.keys(dailyMeals).filter(date => date.startsWith(selectedMonth));
     const hasMealsThisMonth = datesInMonth.some(date => {
       const mealOptions = dailyMeals[date]?.[roommate.id];
       return calculateMeals(mealOptions) > 0;
     });
 
-    // 3. Check if they made any payments during this month
+    // 3. Check if they made any payments in the selected month
     const hasPaymentsThisMonth = payments.some(
       (payment) => 
         payment.roommate_id === roommate.id && 
@@ -31,7 +41,12 @@ export default function Ledger({ selectedMonth }: LedgerProps) {
         payment.amount > 0
     );
 
-    return hasMealsThisMonth || hasPaymentsThisMonth;
+    // Rule A: If they have ANY activity (meals or payments) in this month, ALWAYS show them.
+    if (hasMealsThisMonth || hasPaymentsThisMonth) return true;
+
+    // Rule B: If they have NO activity this month, ONLY show them if they are an active member 
+    // AND we are strictly viewing the current ongoing month. 
+    return roommate.is_active !== false && selectedMonth === currentCalendarMonth;
   });
 
   // Calculation Logic 
@@ -75,7 +90,7 @@ export default function Ledger({ selectedMonth }: LedgerProps) {
                     Meals: <span className="font-bold text-gray-900">{totalMeals}</span>
                   </div>
                   <div>
-                    Paid: <span className="font-bold text-gray-900">{totalPayments}</span>
+                    Paid: <span className="font-bold text-gray-900">৳{totalPayments.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
