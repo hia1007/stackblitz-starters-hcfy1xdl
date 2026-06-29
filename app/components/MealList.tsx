@@ -15,33 +15,27 @@ export default function MealList() {
   return (
     <div className="w-full overflow-x-auto bg-white rounded-lg shadow p-4">
       <h2 className="text-xl font-bold mb-4 text-gray-800">Daily Meal Matrix</h2>
-      <table className="w-full border-collapse text-left">
-        <thead>
-          <tr className="border-b bg-gray-50">
-            <th className="p-3 font-semibold text-gray-600">Member Name</th>
-            <th className="p-3 font-semibold text-gray-600">Meal Count</th>
-          </tr>
-        </thead>
-        <tbody>
-          {activeRoommates.length === 0 ? (
-            <tr>
-              <td colSpan={2} className="p-4 text-center text-gray-500">
-                No active members found.
-              </td>
-            </tr>
-          ) : (
-            activeRoommates.map((roommate) => (
-              <tr key={roommate.id} className="border-b hover:bg-gray-50 transition-colors">
-                <td className="p-3 font-medium text-gray-900">{roommate.name}</td>
-                <td className="p-3">
-                  {/* Fixed prop name from memberId to userId to match your MealAdjuster component structure */}
-                  <MealAdjuster userId={roommate.id} />
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+      
+      {/* If MealAdjuster is now a large card (based on its Tailwind classes), 
+          you might prefer a grid layout instead of a table. 
+          But here it is seamlessly integrated to pass the exact props needed. */}
+      <div className="flex flex-col gap-4">
+        {activeRoommates.length === 0 ? (
+          <div className="p-4 text-center text-gray-500">
+            No active members found.
+          </div>
+        ) : (
+          activeRoommates.map((roommate) => (
+            <div key={roommate.id} className="w-full">
+              <MealAdjuster 
+                id={roommate.id} 
+                name={roommate.name} 
+                spent={roommate.spent} 
+              />
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
