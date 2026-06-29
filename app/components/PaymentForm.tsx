@@ -8,12 +8,10 @@ export default function PaymentForm() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [note, setNote] = useState('');
   
-  // Pull the addPayment function
   const addPayment = useMessStore((state) => state.addPayment);
   
-  // Filter active members safely for the dropdown
   const activeRoommates = useMessStore((state) => 
-    state.roommates.filter((r) => r.isActive !== false)
+    state.roommates.filter((r) => r.is_active !== false) // Uses is_active
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,7 +23,6 @@ export default function PaymentForm() {
     }
 
     try {
-        // Enforce conversion to Number here!
         await addPayment(selectedUserId, Number(amount), note || "Deposit");
         alert("Payment added successfully!");
         setAmount(''); 

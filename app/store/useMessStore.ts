@@ -8,7 +8,7 @@ type Roommate = {
   id: string; 
   name: string; 
   spent: number; 
-  isActive: boolean; // <-- Updated: Replaced archived_month with isActive
+  is_active: boolean; // Matches Supabase column
 };
 export type MealOptions = { noon: boolean; night: boolean; hasGuest: boolean; guestNoon: boolean; guestNight: boolean; is_edited: boolean; };
 type DailyMeals = Record<string, Record<string, MealOptions>>;
@@ -29,7 +29,7 @@ interface MessStore {
   addPayment: (id: string, amount: number, note: string) => Promise<void>;
   deletePayment: (paymentId: string) => Promise<void>;
   addMember: (name: string) => Promise<void>;
-  deleteMember: (id: string) => Promise<void>;
+  deleteMember: (id: string) => Promise<boolean>; // Returns boolean for UI
 }
 
 export const defaultMeals: MealOptions = { noon: false, night: false, hasGuest: false, guestNoon: false, guestNight: false, is_edited: false };
@@ -51,10 +51,9 @@ export const useMessStore = create<MessStore>((set, get) => ({
   selectedMonth: getCurrentMonth(), 
   isLoaded: false, 
   
-  // <-- Updated: Now simply filters for active roommates
   getActiveRoommates: () => {
     const { roommates } = get();
-    return roommates.filter(r => r.isActive !== false); // Treats true or undefined as active
+    return roommates.filter(r => r.is_active !== false); 
   },
 
   setSelectedDate: (date) => set({ selectedDate: date }),
@@ -196,30 +195,48 @@ export const useMessStore = create<MessStore>((set, get) => ({
   },
 
   deletePayment: async (paymentId: string) => {
-    // ... (Keep existing deletePayment logic, it was fine)
+    const { error } = await supabase.from('expenses').delete().eq('id', paymentId);
+    if (error) {
+      console.error("Error deleting payment:", error);
+      alert("Failed to delete payment");
+      return;
+    }
+    set(state => ({
+      payments: state.payments.filter(p => p.id !== paymentId)
+    }));
   },
   
   addMember: async (name: string) => {
-    // ... (Keep existing addMember logic, it was fine)
+    const newRoommate = { id: crypto.randomUUID(), name, spent: 0, is_active: true };
+    const { error } = await supabase.from('roommates').insert([newRoommate]);
+    
+    if (error) {
+      console.error("Error adding member:", error);
+      alert("Failed to add member");
+      return;
+    }
+    
+    set(state => ({ roommates: [...state.roommates, newRoommate] }));
   },
   
   deleteMember: async (id: string) => {
-    // <-- Updated: Now sets isActive to false in DB and local state
     const { error } = await supabase
       .from('roommates')
-      .update({ isActive: false }) 
+      .update({ is_active: false }) 
       .eq('id', id);
 
     if (error) {
       console.error("Error archiving member:", error);
       alert(`Database Error: ${error.message}`);
-      return;
+      return false; // Tell UI it failed
     }
 
     set((state) => ({
       roommates: state.roommates.map(r => 
-        r.id === id ? { ...r, isActive: false } : r
+        r.id === id ? { ...r, is_active: false } : r
       )
     }));
+    
+    return true; // Tell UI it succeeded
   }
 }));

@@ -5,9 +5,8 @@ import { useMessStore } from '../store/useMessStore';
 import MealAdjuster from './MealAdjuster'; 
 
 export default function MealList() {
-  // Best practice: Select the array and filter it here so React re-renders instantly when isActive changes
   const activeRoommates = useMessStore((state) => 
-    state.roommates.filter((r) => r.isActive !== false)
+    state.roommates.filter((r) => r.is_active !== false) // Uses is_active
   );
 
   if (activeRoommates.length === 0) {
@@ -20,7 +19,6 @@ export default function MealList() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Map through active users and render their individual meal controls */}
       {activeRoommates.map((roommate) => (
         <MealAdjuster
           key={roommate.id}

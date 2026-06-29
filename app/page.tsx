@@ -4,7 +4,7 @@ import MealAdjuster from './components/MealAdjuster';
 import { useMessStore, calculateMeals } from './store/useMessStore';
 import { useAuthStore } from './store/useAuthStore'; 
 import BottomDock from './components/BottomDock';
-import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, ShieldAlert } from 'lucide-react';
 import DescoAnalytics from './components/DescoAnalytics';
 import LoginButton from './components/LoginButton';
 import MonthSelector from './components/MonthSelector'; 
@@ -49,8 +49,10 @@ export default function Dashboard() {
   const handleDeleteAttempt = async (id: string, name: string) => {
     const code = window.prompt(`WARNING: You are about to permanently delete ${name}.\n\nEnter the Mastercode to confirm:`);
     if (code === '007') {
-      await deleteMember(id);
-      alert(`${name} was successfully deleted.`);
+      const success = await deleteMember(id); 
+      if (success) {
+         alert(`${name} was successfully deleted.`); 
+      }
     } else if (code !== null) { 
       alert('Authentication Failed: Incorrect mastercode.');
     }
@@ -81,55 +83,46 @@ export default function Dashboard() {
     await addMember(newMemberName.trim());
     setNewMemberName('');
   };
-
-  // ==========================================
-  // ⚡ NEW MONTHLY ISOLATION MATH LOGIC ⚡
-  // ==========================================
   
-  // 1. Filter everything strictly by the selectedMonth (e.g. "2026-06")
   const monthlyDates = Object.keys(dailyMeals).filter(date => date.startsWith(selectedMonth));
   const monthlyPayments = payments.filter(p => p.created_at.startsWith(selectedMonth));
 
   // ==========================================
-  // ⚡ DYNAMIC TIMELINE FILTERING ⚡
+  // ⚡ THE TWO SEPARATE LISTS ⚡
   // ==========================================
-  const activeRoommatesForMonth = roommates.filter(r => {
-    // 1. Core Check: If they are active, they are visible.
-    // We explicitly check for !== false so older entries without the boolean don't disappear.
-    if (r.isActive !== false) return true;
+  
+  // 1. STRICT LIST: Only truly active members (For Matrix & Settings)
+  const strictlyActiveRoommates = roommates.filter(r => r.is_active !== false);
 
-    // 2. ACCOUNTING FAILSAFE: If they have been deleted (isActive === false), 
-    // we STILL show them in the ledger ONLY IF they have financial/meal data in the currently selected month.
-    // This prevents math corruption for historical months.
+  // 2. LEDGER LIST: Active members PLUS deleted members who have history this month (For Math & Ledgers)
+  const ledgerRoommatesForMonth = roommates.filter(r => {
+    if (r.is_active !== false) return true; 
+
     const hasMealsThisMonth = monthlyDates.some(date => dailyMeals[date]?.[r.id]);
     const hasPaymentsThisMonth = monthlyPayments.some(p => p.roommate_id === r.id);
     
     return hasMealsThisMonth || hasPaymentsThisMonth;
   });
 
-  // 2. Calculate Total Monthly Meals
+  // Calculate totals based on the LEDGER list
   let totalMonthlyMeals = 0;
   monthlyDates.forEach(date => {
-    activeRoommatesForMonth.forEach(r => { if (dailyMeals[date][r.id]) totalMonthlyMeals += calculateMeals(dailyMeals[date][r.id]); });
+    ledgerRoommatesForMonth.forEach(r => { if (dailyMeals[date][r.id]) totalMonthlyMeals += calculateMeals(dailyMeals[date][r.id]); });
   });
 
-  // 3. Calculate Total Monthly Expenses (Ignoring lifetime DB 'spent' totals)
   const totalMonthlyCost = monthlyPayments.reduce((sum, p) => sum + p.amount, 0);
   const monthlyMealRate = totalMonthlyMeals > 0 ? totalMonthlyCost / totalMonthlyMeals : 0;
 
-  // 4. Calculate Individual Insights based ONLY on this month
-  const activeRoommate = activeRoommatesForMonth.find(r => r.id === selectedAnalyticsUser);
+  const activeRoommate = ledgerRoommatesForMonth.find(r => r.id === selectedAnalyticsUser);
   let individualMonthlyMeals = 0;
   let individualMonthlySpent = 0;
   const individualMonthlyHistory: { date: string; data: any }[] = [];
 
   if (activeRoommate) {
-    // Calculate spent for this specific month dynamically
     individualMonthlySpent = monthlyPayments
       .filter(p => p.roommate_id === activeRoommate.id)
       .reduce((sum, p) => sum + p.amount, 0);
 
-    // Calculate meals for this specific month
     monthlyDates.forEach(date => {
       if (dailyMeals[date][activeRoommate.id]) {
         const mealsCount = calculateMeals(dailyMeals[date][activeRoommate.id]);
@@ -141,8 +134,6 @@ export default function Dashboard() {
     });
     individualMonthlyHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
-
-  // ==========================================
 
   const todayLocalString = new Date().toLocaleDateString();
   const todaysPayments = payments.filter(p => new Date(p.created_at).toLocaleDateString() === todayLocalString);
@@ -158,11 +149,12 @@ export default function Dashboard() {
         </div>
         <div className="bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl rounded-3xl p-6 md:p-8">
           <p className="text-sm font-bold text-slate-500 mb-6 uppercase tracking-wider">Select a member to remove from the roster</p>
-          {activeRoommatesForMonth.length === 0 ? (
+          {strictlyActiveRoommates.length === 0 ? (
             <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-2xl"><p className="text-slate-500 font-bold">Roster is empty.</p></div>
           ) : (
             <div className="flex flex-col gap-2 divide-y divide-slate-100">
-              {activeRoommatesForMonth.map(r => (
+              {/* Uses STRICT list so they vanish immediately */}
+              {strictlyActiveRoommates.map(r => (
                 <div key={r.id} className="flex justify-between items-center py-4 first:pt-0">
                   <span className="font-black text-lg text-slate-800">{r.name}</span>
                   <button onClick={() => handleDeleteAttempt(r.id, r.name)} className="px-5 py-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 font-black rounded-xl flex items-center gap-2">
@@ -179,7 +171,6 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto flex flex-col gap-6 pb-24 relative overflow-x-hidden animate-in fade-in duration-300">
-      
       <header className="flex justify-between items-center pt-4 relative z-50 min-h-[60px]">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">Bachelor Mess Tracker</h1>
         
@@ -191,7 +182,6 @@ export default function Dashboard() {
 
             {isMenuOpen && (
               <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-3xl border border-white shadow-2xl rounded-3xl p-5 flex flex-col gap-4 origin-top-right animate-in fade-in zoom-in-95 duration-200">
-                
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Manager Portal</h3>
 
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider border-t border-slate-200 pt-3">Add to Roster</h3>
@@ -241,7 +231,7 @@ export default function Dashboard() {
           <MonthSelector selectedMonth={selectedMonth} onChange={setSelectedMonth} />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{activeRoommatesForMonth.length}</p></div>
+            <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{ledgerRoommatesForMonth.length}</p></div>
             <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Monthly Meals</p><p className="text-3xl font-black text-slate-800 mt-2">{totalMonthlyMeals}</p></div>
             <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Per Meal Cost</p><p className="text-3xl font-black text-emerald-600 mt-2">৳ {monthlyMealRate.toFixed(2)}</p></div>
           </div>
@@ -252,18 +242,15 @@ export default function Dashboard() {
               <table className="w-full text-left border-collapse">
                 <thead><tr className="border-b-2 border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider"><th className="pb-4 min-w-[120px]">Member Entity</th><th className="pb-4">Meals</th><th className="pb-4">Spent</th><th className="pb-4">Cost</th><th className="pb-4 text-right">Balance</th></tr></thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-bold text-slate-700">
-                  {activeRoommatesForMonth.length === 0 ? (
+                  {ledgerRoommatesForMonth.length === 0 ? (
                     <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-medium">No members registered in roster.</td></tr>
                   ) : (
-                    activeRoommatesForMonth.map((member) => {
-                      // Calculate dynamically for the month
+                    ledgerRoommatesForMonth.map((member) => {
                       let memMeals = 0;
                       monthlyDates.forEach(date => { if(dailyMeals[date][member.id]) memMeals += calculateMeals(dailyMeals[date][member.id]); });
-                      
                       const memSpent = monthlyPayments.filter(p => p.roommate_id === member.id).reduce((sum, p) => sum + p.amount, 0);
                       const memCost = memMeals * monthlyMealRate;
                       const finalBalance = memSpent - memCost;
-                      
                       return (
                         <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="py-4">{member.name}</td>
@@ -285,7 +272,7 @@ export default function Dashboard() {
               <h2 className="text-2xl font-black text-slate-800">Monthly Individual Insights</h2>
               <select value={selectedAnalyticsUser} onChange={(e) => setSelectedAnalyticsUser(e.target.value)} className="bg-white/80 border border-slate-200 rounded-xl p-3 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select a member...</option>
-                {activeRoommatesForMonth.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {ledgerRoommatesForMonth.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
             {!activeRoommate ? (
@@ -345,13 +332,11 @@ export default function Dashboard() {
       {/* ENTRIES TAB */}
       {activeTab === 'entries' && (
         <div className="flex flex-col gap-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          
           {!user ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl mt-4">
               <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-6"><Lock className="w-10 h-10 text-blue-600" /></div>
               <h2 className="text-3xl font-black text-slate-800 mb-3">Access Restricted</h2>
               <p className="text-slate-500 font-bold mb-8 max-w-sm">Enter the secret manager code to access master entries and manage the system.</p>
-              
               <LoginButton />
             </div>
           ) : (
@@ -373,7 +358,8 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {activeRoommatesForMonth.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
+                  {/* Uses STRICT list so they vanish immediately */}
+                  {strictlyActiveRoommates.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
                 </div>
               </div>
 
@@ -389,7 +375,8 @@ export default function Dashboard() {
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Source Entity (Member)</label>
                         <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                           <option value="">Select a member...</option>
-                          {activeRoommatesForMonth.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          {/* Uses STRICT list so they vanish immediately */}
+                          {strictlyActiveRoommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                       </div>
 
