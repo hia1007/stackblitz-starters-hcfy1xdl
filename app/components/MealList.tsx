@@ -34,8 +34,8 @@ export default function MealList() {
               <tr key={roommate.id} className="border-b hover:bg-gray-50 transition-colors">
                 <td className="p-3 font-medium text-gray-900">{roommate.name}</td>
                 <td className="p-3">
-                  {/* Ensure the prop name matches what MealAdjuster expects (usually memberId or userId) */}
-                  <MealAdjuster memberId={roommate.id} />
+                  {/* Fixed prop name from memberId to userId to match your MealAdjuster component structure */}
+                  <MealAdjuster userId={roommate.id} />
                 </td>
               </tr>
             ))
