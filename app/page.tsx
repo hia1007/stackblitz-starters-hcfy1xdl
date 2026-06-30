@@ -8,6 +8,8 @@ import { MoreVertical, UserPlus, Trash2, X, ArrowLeft, Lock, ShieldAlert } from 
 import DescoAnalytics from './components/DescoAnalytics';
 import LoginButton from './components/LoginButton';
 import MonthSelector from './components/MonthSelector'; 
+import ManagerBazarPost from './components/ManagerBazarPost'; // NEW IMPORT
+import PublicBazarView from './components/PublicBazarView'; // NEW IMPORT
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'ledger' | 'entries'>('ledger');
@@ -91,10 +93,8 @@ export default function Dashboard() {
   // ⚡ THE TWO SEPARATE LISTS ⚡
   // ==========================================
   
-  // 1. STRICT LIST: Only truly active members (For Matrix & Settings)
   const strictlyActiveRoommates = roommates.filter(r => r.is_active !== false);
 
-  // 2. LEDGER LIST: Active members PLUS deleted members who have history this month (For Math & Ledgers)
   const now = new Date();
   const currentCalendarMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   
@@ -102,14 +102,11 @@ export default function Dashboard() {
     const hasMealsThisMonth = monthlyDates.some(date => dailyMeals[date]?.[r.id]);
     const hasPaymentsThisMonth = monthlyPayments.some(p => p.roommate_id === r.id);
     
-    // If they have activity, always show them in the ledger
     if (hasMealsThisMonth || hasPaymentsThisMonth) return true;
 
-    // Rule B: If they have 0 activity, ONLY show them if they are active AND we are looking at the current or future month
     return r.is_active !== false && selectedMonth >= currentCalendarMonth;
   });
 
-  // Calculate totals based on the LEDGER list
   let totalMonthlyMeals = 0;
   monthlyDates.forEach(date => {
     ledgerRoommatesForMonth.forEach(r => { if (dailyMeals[date][r.id]) totalMonthlyMeals += calculateMeals(dailyMeals[date][r.id]); });
@@ -158,7 +155,6 @@ export default function Dashboard() {
             <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-2xl"><p className="text-slate-500 font-bold">Roster is empty.</p></div>
           ) : (
             <div className="flex flex-col gap-2 divide-y divide-slate-100">
-              {/* Uses STRICT list so they vanish immediately */}
               {strictlyActiveRoommates.map(r => (
                 <div key={r.id} className="flex justify-between items-center py-4 first:pt-0">
                   <span className="font-black text-lg text-slate-800">{r.name}</span>
@@ -234,6 +230,9 @@ export default function Dashboard() {
           <DescoAnalytics accountNo="41095956" />
           
           <MonthSelector selectedMonth={selectedMonth} onChange={setSelectedMonth} />
+
+          {/* NEW: PUBLIC BAZAR SCHEDULE INJECTED HERE */}
+          <PublicBazarView />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 rounded-2xl bg-white/40 backdrop-blur-xl border border-white/50 shadow-md flex flex-col justify-center items-center"><p className="text-xs font-bold text-slate-500 uppercase">Total Members</p><p className="text-3xl font-black text-slate-800 mt-2">{ledgerRoommatesForMonth.length}</p></div>
@@ -363,7 +362,6 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Uses STRICT list so they vanish immediately */}
                   {strictlyActiveRoommates.map(roommate => <MealAdjuster key={roommate.id} {...roommate} />)}
                 </div>
               </div>
@@ -371,7 +369,8 @@ export default function Dashboard() {
               {role === 'manager' && (
                 <>
                   <hr className="border-slate-200 border-dashed" />
-                  <div className="max-w-2xl mx-auto w-full">
+                  <div className="max-w-2xl mx-auto w-full flex flex-col gap-8">
+                    {/* Expense Posting Form */}
                     <form onSubmit={handlePostPayment} className="p-6 md:p-10 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-xl flex flex-col gap-6 relative overflow-hidden">
                       {successMessage && <div className="absolute top-0 left-0 right-0 bg-emerald-500 text-white text-center py-2 text-sm font-bold shadow-md">{successMessage}</div>}
                       <h2 className="text-2xl font-black text-slate-800 tracking-tight mt-2">Post Capital Expense</h2>
@@ -380,7 +379,6 @@ export default function Dashboard() {
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Source Entity (Member)</label>
                         <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="bg-white/80 border border-white/40 rounded-xl p-4 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                           <option value="">Select a member...</option>
-                          {/* Uses STRICT list so they vanish immediately */}
                           {strictlyActiveRoommates.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                       </div>
@@ -399,6 +397,9 @@ export default function Dashboard() {
                         {isSubmitting ? 'Synchronizing...' : 'Commit Transaction'}
                       </button>
                     </form>
+
+                    {/* NEW: MANAGER BAZAR POSTING SECTION */}
+                    <ManagerBazarPost />
                   </div>
                 </>
               )}
