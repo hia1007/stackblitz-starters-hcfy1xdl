@@ -1,8 +1,22 @@
 import { create } from 'zustand';
 import { supabase } from '../../lib/supabase';
 
-const getToday = () => new Date().toISOString().split('T')[0];
-const getCurrentMonth = () => new Date().toISOString().slice(0, 7); 
+// FIXED: Calculate local time instead of UTC via toISOString()
+const getToday = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// FIXED: Calculate local time instead of UTC via toISOString()
+const getCurrentMonth = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
 
 type Roommate = { 
   id: string; 
